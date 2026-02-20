@@ -1,0 +1,313 @@
+/**
+ * App.js — Application orchestrator
+ * @module app/App
+ *
+ * Initializes all modules, wires events, manages app-level state transitions.
+ * App states: 'idle' | 'setup' | 'playing'
+ */
+
+import { createStore } from '../core/store.js';
+import { createLayout } from '../ui/layout.js';
+import { initToast, showToast } from '../ui/components/Toast.js';
+import { openSettingsModal } from '../ui/components/SettingsModal.js';
+import { renderSaveList } from '../ui/components/SaveList.js';
+import { renderSetupWizard } from '../ui/components/SetupWizard.js';
+import { renderStoryView, renderStoryError } from '../ui/components/StoryView.js';
+import { renderTreeNav } from '../ui/components/TreeNav.js';
+import * as sessionManager from '../core/sessionManager.js';
+import * as gameEngine from '../core/gameEngine.js';
+import { getSettings } from '../llm/openaiClient.js';
+
+/** @type {ReturnType<typeof createStore>} */
+let store;
+
+/** @type {ReturnType<typeof createLayout>} */
+let els;
+
+/**
+ * Initialize the application.
+ */
+export async function init() {
+    // Create reactive store
+    store = createStore({
+        appState: 'idle',      // 'idle' | 'setup' | 'playing'
+        sessionList: [],
+        activeSessionId: null,
+    });
+
+    // Mount layout
+    els = createLayout();
+
+    // Init toast
+    initToast(els.toastContainer);
+
+    // Wire settings button
+    els.btnSettings.addEventListener('click', () => {
+        openSettingsModal(els.modalRoot, () => {
+            // Refresh save list in case API key state changed
+            refreshSaveList();
+        });
+    });
+
+    // Subscribe to store changes → re-render affected components
+    store.subscribe((state) => {
+        // Re-render is handled via explicit calls for now (MVP simplicity)
+    });
+
+    // Load sessions index
+    await refreshSaveList();
+
+    // Show welcome state
+    renderStoryView({ container: els.storyContainer, session: null });
+    renderTreeNav({ container: els.treeContent, session: null, onNodeClick: () => { } });
+}
+
+/**
+ * Refresh the session list from storage.
+ */
+async function refreshSaveList() {
+    const sessions = await sessionManager.listSessions();
+    store.setState({ sessionList: sessions });
+
+    renderSaveList({
+        headerEl: els.savelistHeader,
+        bodyEl: els.savelistBody,
+        sessions,
+        activeSessionId: store.getState().activeSessionId,
+        onNewGame: handleNewGame,
+        onLoadSession: handleLoadSession,
+        onDeleteSession: handleDeleteSession,
+    });
+}
+
+/**
+ * Apply theme colors from session data.
+ */
+function applyTheme(theme) {
+    if (!theme) return;
+    if (theme.themeColor) {
+        document.body.style.backgroundColor = theme.themeColor;
+        document.documentElement.style.setProperty('--bg-primary', theme.themeColor);
+        // Derive secondary/panel colors for sidebars + header
+        document.documentElement.style.setProperty('--bg-secondary', blendColor(theme.themeColor, 0.08));
+        document.documentElement.style.setProperty('--bg-panel', blendColor(theme.themeColor, 0.06));
+    }
+    if (theme.accent) {
+        document.documentElement.style.setProperty('--accent', theme.accent);
+        document.documentElement.style.setProperty('--accent-hover', theme.accent);
+        document.documentElement.style.setProperty('--accent-glow', theme.accent + '40');
+        document.documentElement.style.setProperty('--border', theme.accent + '1a');
+        document.documentElement.style.setProperty('--border-hover', theme.accent + '4d');
+    }
+}
+
+/**
+ * Derive a brighter variant of a hex color for secondary surfaces.
+ */
+function blendColor(hex, amount) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    const nr = Math.min(255, Math.round(r + 255 * amount));
+    const ng = Math.min(255, Math.round(g + 255 * amount));
+    const nb = Math.min(255, Math.round(b + 255 * amount));
+    return `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
+}
+
+/**
+ * Reset theme to defaults.
+ */
+function resetTheme() {
+    document.body.style.backgroundColor = '';
+    const props = ['--bg-primary', '--bg-secondary', '--bg-panel', '--accent', '--accent-hover', '--accent-glow', '--border', '--border-hover'];
+    props.forEach(p => document.documentElement.style.removeProperty(p));
+}
+
+// ─── Handlers ──────────────────────────────────────────────────────
+
+function handleNewGame() {
+    store.setState({ appState: 'setup', activeSessionId: null });
+    resetTheme();
+
+    renderSetupWizard({
+        container: els.storyContainer,
+        onComplete: handleSetupComplete,
+        onCancel: () => {
+            store.setState({ appState: 'idle' });
+            renderStoryView({ container: els.storyContainer, session: null });
+        },
+    });
+
+    renderTreeNav({ container: els.treeContent, session: null, onNodeClick: () => { } });
+}
+
+async function handleSetupComplete({ title, systemSynopsis, openingText, themeColor, accentColor }) {
+    const settings = getSettings();
+
+    // Create session
+    const session = gameEngine.createSession({
+        title,
+        systemSynopsis,
+        openingText,
+        themeColor,
+        accentColor,
+        model: settings.model,
+        temperature: settings.temperature,
+    });
+
+    sessionManager.setCurrentSession(session);
+    store.setState({ appState: 'playing', activeSessionId: session.id });
+
+    // Apply theme
+    applyTheme(session.theme);
+
+    // Show opening text with "start" button
+    showOpeningScreen(session);
+
+    showToast('새로운 모험이 시작됩니다!', 'success');
+}
+
+function showOpeningScreen(session) {
+    els.storyContainer.innerHTML = `
+    <div class="story-opening">${escapeHTML(session.synopsis.openingText)}</div>
+    <div style="text-align: center;">
+      <button class="btn btn-primary" id="btn-start-game" style="padding: 14px 40px; font-size: 16px;">
+        ✦ 모험 시작
+      </button>
+    </div>
+  `;
+
+    els.storyContainer.querySelector('#btn-start-game').addEventListener('click', async () => {
+        // Show loading on the start button itself
+        const startBtn = els.storyContainer.querySelector('#btn-start-game');
+        startBtn.disabled = true;
+        startBtn.innerHTML = '<span class="spinner" style="width:18px;height:18px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;"></span> 생성 중...';
+
+        const result = await gameEngine.generateInitialOptions(session);
+        if (!result.ok) {
+            renderStoryError(els.storyContainer, result.error || 'LLM 호출 실패', () => {
+                showOpeningScreen(session);
+            });
+            return;
+        }
+
+        await sessionManager.saveCurrentSession();
+        await refreshSaveList();
+        renderCurrentNode();
+    });
+}
+
+async function handleLoadSession(sessionId) {
+    els.closeAllPanels(); // close sidebar overlay before switching
+    const session = await sessionManager.loadSession(sessionId);
+    if (!session) {
+        showToast('세션을 불러올 수 없습니다.', 'error');
+        return;
+    }
+
+    store.setState({ appState: 'playing', activeSessionId: session.id });
+    applyTheme(session.theme);
+    renderCurrentNode(true); // instant — loading existing session
+    await refreshSaveList();
+    showToast('세션을 불러왔습니다.', 'info');
+}
+
+async function handleDeleteSession(sessionId) {
+    await sessionManager.deleteSession(sessionId);
+    showToast('세션이 삭제되었습니다.', 'info');
+
+    if (store.getState().activeSessionId === sessionId) {
+        store.setState({ appState: 'idle', activeSessionId: null });
+        resetTheme();
+        renderStoryView({ container: els.storyContainer, session: null });
+        renderTreeNav({ container: els.treeContent, session: null, onNodeClick: () => { } });
+    }
+
+    await refreshSaveList();
+}
+
+async function handleOptionSelect(optionId, customText) {
+    const session = sessionManager.getCurrentSession();
+    if (!session) return;
+
+    // Fix #4: Don't replace content — StoryView handles inline loading
+    const result = await gameEngine.progressTurn(session, optionId, customText);
+
+    if (!result.ok) {
+        renderStoryError(els.storyContainer, result.error || 'LLM 호출 실패', () => {
+            handleOptionSelect(optionId, customText);
+        });
+        return;
+    }
+
+    if (result.reused) {
+        showToast('이전에 탐험한 경로입니다.', 'info');
+    }
+
+    sessionManager.scheduleSave();
+    renderCurrentNode(); // streaming enabled for new content
+}
+
+function handleTreeNodeClick(nodeId) {
+    const session = sessionManager.getCurrentSession();
+    if (!session) return;
+
+    const result = gameEngine.rollbackToNode(session, nodeId);
+    if (!result.ok) {
+        showToast('해당 노드로 이동할 수 없습니다.', 'error');
+        return;
+    }
+
+    sessionManager.scheduleSave();
+    renderCurrentNode(true); // instant — no streaming on rollback
+    // showToast('과거 시점으로 이동했습니다.', 'info');
+}
+
+/**
+ * Render the current node + tree based on active session.
+ * @param {boolean} [skipStreaming=false] — if true, show text instantly
+ */
+function renderCurrentNode(skipStreaming = false) {
+    const session = sessionManager.getCurrentSession();
+    if (!session) return;
+
+    renderStoryView({
+        container: els.storyContainer,
+        session,
+        onOptionSelect: handleOptionSelect,
+        skipStreaming,
+    });
+
+    renderTreeNav({
+        container: els.treeContent,
+        session,
+        onNodeClick: handleTreeNodeClick,
+    });
+
+    // Fire-and-forget: prefetch all option responses in background
+    triggerPrefetch();
+}
+
+/**
+ * Prefetch LLM responses for all options on the current node.
+ * Runs in background — errors are logged but never block the UI.
+ */
+function triggerPrefetch() {
+    const session = sessionManager.getCurrentSession();
+    if (!session) return;
+
+    gameEngine.prefetchAllOptions(session)
+        .then(() => {
+            // Save prefetched nodes to persistent storage
+            sessionManager.scheduleSave();
+        })
+        .catch((err) => {
+            console.warn('[Prefetch] Background prefetch error:', err);
+        });
+}
+
+function escapeHTML(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
