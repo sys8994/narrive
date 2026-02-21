@@ -58,7 +58,11 @@ function renderLinearPath(container, session, startNodeId, activePathSet, onNode
         if (!node) break;
 
         // Get children of this node
-        const childEdges = session.edges.filter(e => e.from === currentId);
+        let childEdges = session.edges.filter(e => e.from === currentId);
+        childEdges = childEdges.filter(e => {
+            const childNode = session.nodesById[e.to];
+            return childNode && (childNode.visited || activePathSet.has(e.to));
+        });
         const isCurrent = session.currentNodeId === currentId;
         const isOnActivePath = activePathSet.has(currentId);
 
@@ -71,12 +75,12 @@ function renderLinearPath(container, session, startNodeId, activePathSet, onNode
         // Step number
         const stepNum = document.createElement('span');
         stepNum.className = 'tree-node__step';
-        stepNum.textContent = node.depth;
+        stepNum.textContent = node.depth === 0 ? '✦' : node.depth;
 
         // Title
         const titleEl = document.createElement('span');
         titleEl.className = 'tree-node__title';
-        titleEl.textContent = (node.meta && node.meta.title) || `Turn ${node.depth}`;
+        titleEl.textContent = node.depth === 0 ? 'Intro' : ((node.meta && node.meta.title) || `Turn ${node.depth}`);
 
         nodeEl.appendChild(stepNum);
         nodeEl.appendChild(titleEl);

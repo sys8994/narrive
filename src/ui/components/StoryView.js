@@ -3,16 +3,18 @@
  * @module ui/components/StoryView
  *
  * Features:
+ * - Cumulative rendering (turns append sequentially, older turns remain visible)
  * - Shows previously selected option with badge when rolling back
  * - Inline loading: shows spinner in badge area of clicked option
- * - Free-text input option always appended at the end
  * - Streaming text reveal: words appear one-by-one with fade-in
  */
 
+import { getPathToRoot } from '../../core/treeEngine.js';
+
 // ─── Configurable Timing ─────────────────────────────────────────
-const STREAM_WORD_DELAY_MS = 20;   // delay between each word appearing
-const STREAM_FADE_MS = 50;   // how long each word's fade-in takes
-const STREAM_OPTION_DELAY_MS = 80; // delay before each option button appears
+const STREAM_WORD_DELAY_MS = 30;   // delay between each word appearing
+const STREAM_FADE_MS = 80;   // how long each word's fade-in takes
+const STREAM_OPTION_DELAY_MS = 100; // delay before each option button appears
 
 /**
  * Render the current story node in the center panel.
@@ -28,42 +30,176 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
     return;
   }
 
-  const node = session.nodesById[session.currentNodeId];
-  if (!node) {
+  const activePath = getPathToRoot(session, session.currentNodeId);
+  if (!activePath || activePath.length === 0) {
     container.innerHTML = '<div class="empty-state"><div class="empty-state__text">노드를 찾을 수 없습니다.</div></div>';
     return;
   }
 
-  // Check if ending
-  if (node.isEnding) {
-    renderEnding(container, node, skipStreaming);
-    return;
+  // 0. Clean up empty states or welcoming screens dynamically
+  Array.from(container.children).forEach(child => {
+    if (!child.classList.contains('story-turn') &&
+      !child.classList.contains('retry-banner') &&
+      !child.classList.contains('ending-container') &&
+      !child.classList.contains('state-bar') &&
+      !child.classList.contains('scroll-spacer')) {
+      child.remove();
+    }
+  });
+
+  // 1. Remove turns that are NOT in the current active path (e.g. user rolled back)
+  const existingTurns = Array.from(container.querySelectorAll('.story-turn'));
+  let syncIndex = 0;
+
+  for (let i = 0; i < existingTurns.length; i++) {
+    const turnEl = existingTurns[i];
+    const nodeId = turnEl.dataset.nodeId;
+
+    if (activePath[i] === nodeId) {
+      syncIndex = i + 1; // It matches. Keep it.
+
+      // Keep past options visible, but update their selected state to match the current tree truth
+      const node = session.nodesById[nodeId];
+      if (node) {
+        // Clear any leftover loading states
+        turnEl.querySelectorAll('.option-btn').forEach(btn => {
+          btn.disabled = false;
+          btn.classList.remove('option-btn--loading');
+        });
+
+        // Re-apply 'was-selected' styling based on `node.selectedOptionId`
+        turnEl.querySelectorAll('.option-btn').forEach(btn => {
+          const badge = btn.querySelector('.option-btn__badge');
+          if (btn.dataset.optionId === node.selectedOptionId) {
+            btn.classList.add('option-btn--was-selected');
+            if (badge) badge.textContent = '← 이전 선택';
+          } else {
+            btn.classList.remove('option-btn--was-selected');
+            if (badge) badge.textContent = '';
+          }
+        });
+      }
+    } else {
+      // Mismatch starting here. Remove this and all subsequent DOM elements.
+      for (let j = i; j < existingTurns.length; j++) {
+        existingTurns[j].remove();
+      }
+      break;
+    }
   }
 
-  container.innerHTML = '';
+  // 2. Append new turns that are in the active path but not in the DOM
+  for (let i = syncIndex; i < activePath.length; i++) {
+    const nodeId = activePath[i];
+    const node = session.nodesById[nodeId];
+    if (!node) continue;
 
-  // Story text
-  const textEl = document.createElement('div');
-  textEl.className = 'story-text';
-  container.appendChild(textEl);
+    const turnEl = document.createElement('div');
+    turnEl.className = 'story-turn';
+    turnEl.dataset.nodeId = nodeId;
+    turnEl.style.cssText = 'margin-bottom: 48px;';
 
-  // Options container (created now, populated after streaming finishes)
+    // Add small subtle header
+    const headerEl = document.createElement('div');
+    headerEl.className = 'story-turn__header';
+    headerEl.style.cssText = 'font-size: 16px; opacity: 0.5; margin-bottom: 12px; padding-top: 12px; font-weight: 500;';
+
+    const turnLabel = node.depth === 0 ? 'Intro' : `Turn #${node.depth}`;
+    const title = node.meta?.title || '진행';
+    const location = (node.stateSnapshot && node.stateSnapshot.location) ? ` @ ${node.stateSnapshot.location}` : '';
+    headerEl.textContent = `${turnLabel}. ${title}${location}`;
+    turnEl.appendChild(headerEl);
+
+    // If it's an ending
+    if (node.isEnding) {
+      container.appendChild(turnEl);
+      renderEnding(turnEl, node, skipStreaming);
+      continue;
+    }
+
+    // Story text
+    const textEl = document.createElement('div');
+    textEl.className = 'story-text';
+    turnEl.appendChild(textEl);
+
+    container.appendChild(turnEl);
+
+    const isLastNode = (i === activePath.length - 1);
+    const shouldStream = isLastNode && !skipStreaming;
+
+    // --- Always attach options for all turns (past and current) ---
+    if (shouldStream) {
+      // For the last node with streaming: set spacer, scroll, stream, then attach options
+      setScrollSpacer(container);
+      setTimeout(() => {
+        turnEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+
+      streamText(textEl, node.text, () => {
+        attachOptions(container, turnEl, node, session, onOptionSelect, false);
+        // Shrink spacer after options are fully attached
+        shrinkScrollSpacer(container, turnEl);
+      });
+    } else {
+      // Instant render (past turns or skipStreaming)
+      textEl.textContent = node.text;
+      attachOptions(container, turnEl, node, session, onOptionSelect, true);
+
+      if (isLastNode) {
+        // Last node rendered instantly (e.g. session load): set spacer + scroll
+        setScrollSpacer(container);
+        setTimeout(() => {
+          shrinkScrollSpacer(container, turnEl);
+          turnEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 50);
+      }
+    }
+  }
+}
+
+/**
+ * Set the scroll spacer to full viewport height.
+ * Called once before scrollIntoView so the element can reach the top.
+ */
+function setScrollSpacer(container) {
+  let spacer = container.querySelector('.scroll-spacer');
+  if (!spacer) {
+    spacer = document.createElement('div');
+    spacer.className = 'scroll-spacer';
+    spacer.style.cssText = 'pointer-events: none;';
+    container.appendChild(spacer);
+  }
+  if (spacer.nextSibling) {
+    container.appendChild(spacer);
+  }
+  const scrollParent = container.closest('.panel-center__content');
+  if (scrollParent) {
+    spacer.style.height = `${scrollParent.clientHeight}px`;
+  }
+}
+
+/**
+ * Shrink the spacer to exactly what's needed (viewport - lastTurnHeight).
+ * Called once after content is fully rendered (text + options).
+ */
+function shrinkScrollSpacer(container, lastTurnEl) {
+  const spacer = container.querySelector('.scroll-spacer');
+  if (!spacer) return;
+  const scrollParent = container.closest('.panel-center__content');
+  if (!scrollParent) return;
+
+  const viewportH = scrollParent.clientHeight;
+  const turnH = lastTurnEl.getBoundingClientRect().height;
+  const needed = Math.max(0, viewportH - turnH - 32);
+  spacer.style.height = `${needed}px`;
+}
+
+function attachOptions(container, turnEl, node, session, onOptionSelect, instant) {
   const optList = document.createElement('div');
   optList.className = 'options-list';
-
-  // Streaming or instant
-  if (skipStreaming) {
-    textEl.textContent = node.text;
-    buildOptions(optList, node, onOptionSelect, true);
-    container.appendChild(optList);
-    appendStateBar(container, session);
-  } else {
-    streamText(textEl, node.text, () => {
-      buildOptions(optList, node, onOptionSelect, false);
-      container.appendChild(optList);
-      appendStateBar(container, session);
-    });
-  }
+  buildOptions(optList, node, onOptionSelect, instant);
+  turnEl.appendChild(optList);
+  // appendStateBar(turnEl, session);
 }
 
 /**
@@ -136,7 +272,7 @@ function buildOptions(optList, node, onOptionSelect, instant) {
 
     btn.addEventListener('click', () => {
       setOptionLoading(btn, optList);
-      onOptionSelect(opt.id);
+      onOptionSelect(node.id, opt.id);
     });
 
     if (!instant) {
@@ -150,8 +286,8 @@ function buildOptions(optList, node, onOptionSelect, instant) {
   });
 
   // Free-text input option at the end
-  const freeTextRow = buildFreeTextInput(optList, onOptionSelect, instant);
-  optList.appendChild(freeTextRow);
+  // const freeTextRow = buildFreeTextInput(optList, onOptionSelect, instant);
+  // optList.appendChild(freeTextRow);
 
   // Stagger reveal
   if (!instant) {
@@ -163,10 +299,10 @@ function buildOptions(optList, node, onOptionSelect, instant) {
     });
 
     // Reveal free-text after all option buttons
-    setTimeout(() => {
-      freeTextRow.style.opacity = '1';
-      freeTextRow.style.transform = 'translateY(0)';
-    }, buttons.length * STREAM_OPTION_DELAY_MS);
+    // setTimeout(() => {
+    //   freeTextRow.style.opacity = '1';
+    //   freeTextRow.style.transform = 'translateY(0)';
+    // }, buttons.length * STREAM_OPTION_DELAY_MS);
   }
 }
 
@@ -222,15 +358,18 @@ function buildFreeTextInput(optList, onOptionSelect, instant) {
  * show a small spinner in the badge area, disable all buttons.
  */
 function setOptionLoading(activeBtn, optList) {
-  // Disable all options
-  optList.querySelectorAll('.option-btn').forEach((btn) => {
-    btn.disabled = true;
-  });
-  // Disable free text
-  const freeInput = optList.querySelector('.option-freetext__input');
-  const freeBtn = optList.querySelector('.option-freetext__btn');
-  if (freeInput) freeInput.disabled = true;
-  if (freeBtn) freeBtn.disabled = true;
+  // Disable all options globally in the container so the user doesn't spam click other turns
+  const container = optList.closest('.panel-center__content');
+  if (container) {
+    container.querySelectorAll('.option-btn').forEach((btn) => {
+      btn.disabled = true;
+    });
+    // Disable free text everywhere
+    container.querySelectorAll('.option-freetext__input, .option-freetext__btn').forEach(el => el.disabled = true);
+  } else {
+    // Fallback just in case
+    optList.querySelectorAll('.option-btn').forEach(btn => btn.disabled = true);
+  }
 
   // Show spinner in badge area of clicked button
   const badge = activeBtn.querySelector('.option-btn__badge');
@@ -247,6 +386,7 @@ function appendStateBar(container, session) {
   const state = session.gameState;
   if (state.location || state.inventory.length > 0) {
     const stateBar = document.createElement('div');
+    stateBar.className = 'state-bar';
     stateBar.style.cssText = 'margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted);';
     const parts = [];
     if (state.location) parts.push(`📍 ${state.location}`);
@@ -312,10 +452,9 @@ function renderEnding(container, node, skipStreaming) {
   const badgeClass = `ending-badge--${endingType}`;
   const badgeLabel = { good: 'GOOD ENDING', bad: 'BAD ENDING', neutral: 'ENDING' }[endingType] || 'ENDING';
 
-  container.innerHTML = '';
-
   const endingDiv = document.createElement('div');
   endingDiv.className = 'ending-container';
+  endingDiv.style.cssText = 'padding: 32px 0; border-top: 1px dashed var(--border); margin-top: 16px;';
 
   const badgeEl = document.createElement('div');
   badgeEl.className = `ending-badge ${badgeClass}`;
@@ -324,7 +463,7 @@ function renderEnding(container, node, skipStreaming) {
 
   const textEl = document.createElement('div');
   textEl.className = 'story-text';
-  textEl.style.cssText = 'text-align: center; margin-top: 24px;';
+  textEl.style.cssText = 'text-align: left; margin-top: 12px; font-weight: 600; color: var(--text-primary);';
   endingDiv.appendChild(textEl);
 
   const hintEl = document.createElement('div');

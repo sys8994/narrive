@@ -16,7 +16,7 @@ import { renderStoryView, renderStoryError } from '../ui/components/StoryView.js
 import { renderTreeNav } from '../ui/components/TreeNav.js';
 import * as sessionManager from '../core/sessionManager.js';
 import * as gameEngine from '../core/gameEngine.js';
-import { getSettings } from '../llm/openaiClient.js';
+import { getSettings } from '../llm/apiClient.js';
 
 /** @type {ReturnType<typeof createStore>} */
 let store;
@@ -126,6 +126,7 @@ function resetTheme() {
 // ─── Handlers ──────────────────────────────────────────────────────
 
 function handleNewGame() {
+    els.closeAllPanels();
     store.setState({ appState: 'setup', activeSessionId: null });
     resetTheme();
 
@@ -141,7 +142,7 @@ function handleNewGame() {
     renderTreeNav({ container: els.treeContent, session: null, onNodeClick: () => { } });
 }
 
-async function handleSetupComplete({ title, systemSynopsis, openingText, themeColor, accentColor }) {
+async function handleSetupComplete({ title, systemSynopsis, openingText, themeColor, accentColor, worldSchema }) {
     const settings = getSettings();
 
     // Create session
@@ -153,6 +154,7 @@ async function handleSetupComplete({ title, systemSynopsis, openingText, themeCo
         accentColor,
         model: settings.model,
         temperature: settings.temperature,
+        worldSchema,
     });
 
     sessionManager.setCurrentSession(session);
@@ -161,13 +163,14 @@ async function handleSetupComplete({ title, systemSynopsis, openingText, themeCo
     // Apply theme
     applyTheme(session.theme);
 
-    // Show opening text with "start" button
-    showOpeningScreen(session);
+    // Show opening text with "start" button and kick off prefetch!
+    const prefetchPromise = gameEngine.generateInitialOptions(session);
+    showOpeningScreen(session, prefetchPromise);
 
     showToast('새로운 모험이 시작됩니다!', 'success');
 }
 
-function showOpeningScreen(session) {
+function showOpeningScreen(session, prefetchPromise) {
     els.storyContainer.innerHTML = `
     <div class="story-opening">${escapeHTML(session.synopsis.openingText)}</div>
     <div style="text-align: center;">
@@ -183,10 +186,11 @@ function showOpeningScreen(session) {
         startBtn.disabled = true;
         startBtn.innerHTML = '<span class="spinner" style="width:18px;height:18px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;"></span> 생성 중...';
 
-        const result = await gameEngine.generateInitialOptions(session);
+        const result = await prefetchPromise;
         if (!result.ok) {
             renderStoryError(els.storyContainer, result.error || 'LLM 호출 실패', () => {
-                showOpeningScreen(session);
+                const newPromise = gameEngine.generateInitialOptions(session);
+                showOpeningScreen(session, newPromise);
             });
             return;
         }
@@ -226,16 +230,32 @@ async function handleDeleteSession(sessionId) {
     await refreshSaveList();
 }
 
-async function handleOptionSelect(optionId, customText) {
+async function handleOptionSelect(nodeId, optionId, customText) {
     const session = sessionManager.getCurrentSession();
     if (!session) return;
+
+    if (session.currentNodeId !== nodeId) {
+        // Rollback state computationally
+        gameEngine.rollbackToNode(session, nodeId);
+
+        // Visually remove future DOM nodes immediately so the user sees the timeline get clipped
+        const turnEls = Array.from(els.storyContainer.querySelectorAll('.story-turn'));
+        let found = false;
+        turnEls.forEach(el => {
+            if (found) el.remove();
+            if (el.dataset.nodeId === nodeId) found = true;
+        });
+
+        const ending = els.storyContainer.querySelector('.ending-container');
+        if (ending) ending.remove();
+    }
 
     // Fix #4: Don't replace content — StoryView handles inline loading
     const result = await gameEngine.progressTurn(session, optionId, customText);
 
     if (!result.ok) {
         renderStoryError(els.storyContainer, result.error || 'LLM 호출 실패', () => {
-            handleOptionSelect(optionId, customText);
+            handleOptionSelect(nodeId, optionId, customText);
         });
         return;
     }
@@ -252,6 +272,14 @@ function handleTreeNodeClick(nodeId) {
     const session = sessionManager.getCurrentSession();
     if (!session) return;
 
+    // Check if the node is already rendered in the DOM
+    const turnEl = els.storyContainer.querySelector(`.story-turn[data-node-id="${nodeId}"]`);
+    if (turnEl) {
+        // Just scroll there
+        turnEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+    }
+
     const result = gameEngine.rollbackToNode(session, nodeId);
     if (!result.ok) {
         showToast('해당 노드로 이동할 수 없습니다.', 'error');
@@ -260,7 +288,6 @@ function handleTreeNodeClick(nodeId) {
 
     sessionManager.scheduleSave();
     renderCurrentNode(true); // instant — no streaming on rollback
-    // showToast('과거 시점으로 이동했습니다.', 'info');
 }
 
 /**

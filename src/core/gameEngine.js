@@ -22,6 +22,7 @@ export function createInitialState() {
     return {
         location: '',
         inventory: [],
+        flags: {},
         turnCount: 0,
         isEnding: false,
     };
@@ -39,7 +40,7 @@ export function createInitialState() {
  * @param {number} params.temperature
  * @returns {Object} GameSessionBlob
  */
-export function createSession({ title, systemSynopsis, openingText, themeColor, accentColor, model, temperature }) {
+export function createSession({ title, systemSynopsis, openingText, themeColor, accentColor, model, temperature, worldSchema }) {
     const sessionId = generateId();
     const rootId = generateId();
     const timestamp = now();
@@ -55,6 +56,7 @@ export function createSession({ title, systemSynopsis, openingText, themeColor, 
         stateSnapshot: { ...initialState },
         isEnding: false,
         meta: { title: '시작' },
+        visited: true,
     };
 
     return {
@@ -64,6 +66,7 @@ export function createSession({ title, systemSynopsis, openingText, themeColor, 
         updatedAt: timestamp,
         theme: { themeColor, accent: accentColor },
         synopsis: { systemSynopsis, openingText },
+        worldSchema: worldSchema || null,
         llm: { model, temperature },
         currentNodeId: rootId,
         rootNodeId: rootId,
@@ -85,13 +88,42 @@ export async function generateInitialOptions(session) {
 
     const data = result.data;
     const rootNode = session.nodesById[session.rootNodeId];
-    rootNode.options = data.options || [];
-    if (data.updatedState) {
-        Object.assign(session.gameState, data.updatedState);
-        session.gameState.turnCount = 0; // root is always turn 0
-        rootNode.stateSnapshot = { ...session.gameState };
+
+    const newState = {
+        location: (data.updatedState && data.updatedState.location) || session.gameState.location,
+        inventory: (data.updatedState && data.updatedState.inventory) || [...session.gameState.inventory],
+        flags: { ...session.gameState.flags, ...((data.updatedState && data.updatedState.flags) || {}) },
+        turnCount: 1,
+        isEnding: data.isEnding || false,
+    };
+
+    const newNode = {
+        id: generateId(),
+        parentId: rootNode.id,
+        depth: 1,
+        text: data.text || '',
+        options: data.options || [],
+        selectedOptionId: null,
+        stateSnapshot: { ...newState },
+        isEnding: data.isEnding || false,
+        meta: { title: data.nodeTitle || `Turn 1` },
+        visited: true,
+    };
+
+    if (data.isEnding && data.endingType) {
+        newNode.meta.endingType = data.endingType;
     }
+
+    rootNode.options = [{ id: 'start', text: '모험 시작' }];
+    rootNode.selectedOptionId = 'start';
+
+    tree.addNode(session, newNode);
+    tree.addEdge(session, rootNode.id, 'start', newNode.id);
+
+    session.currentNodeId = newNode.id;
+    session.gameState = { ...newState };
     session.updatedAt = now();
+
     return { ok: true, data };
 }
 
@@ -118,6 +150,7 @@ export async function progressTurn(session, optionId, customText) {
         session.currentNodeId = existingChild.id;
         session.gameState = { ...existingChild.stateSnapshot };
         session.updatedAt = now();
+        existingChild.visited = true;
         return { ok: true, reused: true, node: existingChild };
     }
 
@@ -139,6 +172,7 @@ export async function progressTurn(session, optionId, customText) {
     const newState = {
         location: (data.updatedState && data.updatedState.location) || parentState.location,
         inventory: (data.updatedState && data.updatedState.inventory) || [...parentState.inventory],
+        flags: { ...parentState.flags, ...((data.updatedState && data.updatedState.flags) || {}) },
         turnCount: parentState.turnCount + 1,
         isEnding: data.isEnding || false,
     };
@@ -154,6 +188,7 @@ export async function progressTurn(session, optionId, customText) {
         stateSnapshot: { ...newState },
         isEnding: data.isEnding || false,
         meta: { title: data.nodeTitle || `Turn ${newState.turnCount}` },
+        visited: true,
     };
 
     // If it's an ending, add ending type
@@ -212,13 +247,13 @@ export async function prefetchAllOptions(session) {
     console.log(`Prefetching ${optionsToFetch.length} options for node ${currentNode.id}`);
     console.groupEnd();
 
-    // Fire all LLM calls in parallel
-    const promises = optionsToFetch.map(async (opt) => {
+    // Fire LLM calls. We process them sequentially with a tiny delay to avoid hitting Gemini's strict 15 RPM / burst rate limits.
+    for (const opt of optionsToFetch) {
         try {
             const result = await callPrompt3(session, opt);
             if (!result.ok) {
                 console.warn(`[Prefetch] Failed for option "${opt.text}":`, result.error);
-                return;
+                continue;
             }
 
             const data = result.data;
@@ -226,6 +261,7 @@ export async function prefetchAllOptions(session) {
             const newState = {
                 location: (data.updatedState && data.updatedState.location) || parentState.location,
                 inventory: (data.updatedState && data.updatedState.inventory) || [...parentState.inventory],
+                flags: { ...parentState.flags, ...((data.updatedState && data.updatedState.flags) || {}) },
                 turnCount: parentState.turnCount + 1,
                 isEnding: data.isEnding || false,
             };
@@ -240,6 +276,7 @@ export async function prefetchAllOptions(session) {
                 stateSnapshot: { ...newState },
                 isEnding: data.isEnding || false,
                 meta: { title: data.nodeTitle || `Turn ${newState.turnCount}` },
+                visited: false,
             };
 
             if (data.isEnding && data.endingType) {
@@ -252,11 +289,13 @@ export async function prefetchAllOptions(session) {
                 tree.addEdge(session, currentNode.id, opt.id, newNode.id);
                 console.log(`[Prefetch] ✓ Cached "${opt.text}" → node ${newNode.id}`);
             }
+
+            // Artificial delay between prefetches to respect bursting limits
+            await new Promise(r => setTimeout(r, 1500));
         } catch (err) {
             console.warn(`[Prefetch] Error for option "${opt.text}":`, err);
         }
-    });
+    }
 
-    await Promise.allSettled(promises);
     session.updatedAt = now();
 }

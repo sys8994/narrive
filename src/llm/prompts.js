@@ -7,7 +7,7 @@
  * Prompt #3: turn progression → story text + options + state update
  */
 
-import { chatCompletion } from './openaiClient.js';
+import { chatCompletion } from './apiClient.js';
 import { safeParseJSON } from './parse.js';
 import * as treeEngine from '../core/treeEngine.js';
 
@@ -26,80 +26,66 @@ export async function callPrompt1(userBackground) {
 
 The user will provide a short background description for their story.
 
-Your task is NOT to generate generic RPG questions.
-Your task is to carefully analyze the user's specific concept and generate 3-5 highly relevant follow-up questions that:
+Your goal is to generate 3-5 highly relevant follow-up questions that are tightly tied to the user's concept,
+BUT with a strict UX policy: minimize typing and prefer structured choices.
 
-- Clarify the core conflict
-- Define the protagonist’s role and motivation
-- Establish the world’s rules and constraints
-- Set the emotional tone and stakes
-- Shape the intended gameplay direction
+## Extract & Target
+- First, extract 3-6 key elements from the user's input (genre, setting, keywords, implied themes, core gimmick).
+- Every question MUST explicitly reference at least ONE extracted element in its label (Korean).
 
-## Critical Requirements
+## CRITICAL UX POLICY (Typing Minimization)
+1) Question type distribution (HARD RULES)
+- You MUST produce 3 to 5 questions total.
+- At least 3 questions MUST be type "select".
+- You MAY include at most 1 "slider" (only for intensity/difficulty).
+- You MAY include at most 1 "text".
+- You MUST NOT use "textarea" (0 allowed). Do NOT use "textarea" even for creative details.
+- Use "checkbox" only if multiple selections truly matter; otherwise prefer "select".
 
-1. Concept-Specific Design
-- You MUST extract key elements from the user’s input (genre, setting, keywords, implied themes).
-- Each question MUST directly relate to those extracted elements.
-- Do NOT generate template-like or generic RPG questions.
-- Avoid repeating common default categories unless clearly relevant.
+2) Options design (for select)
+- Each "select" must have 4-7 options.
+- Include one option for "자동(추천)" OR "상관없음(자동 생성)" so the user can proceed without decisions.
+- Include one option for "기타(직접 입력)" only if truly necessary.
+  (If you include "기타(직접 입력)", the UI can later reveal a text field, but do NOT add extra questions here.)
 
-2. Conflict-Centered Structure
-At least ONE question must clarify:
-- The main conflict or driving problem of the story.
+3) Avoid generic templates
+- Do NOT ask generic RPG setup questions that could fit any story.
+- Each question must be concept-specific and materially affect story generation.
 
-3. Protagonist Definition
-At least ONE question must define:
-- Who the player character is in this specific world.
-- Their role, limitation, or special position.
+## Content Requirements (still mandatory, but obey UX policy)
+- At least ONE question must clarify the main conflict / driving problem.
+- At least ONE question must define the protagonist’s role/motivation/constraint.
+- At least ONE question must define world rules/constraints relevant to the concept.
+- At least ONE question must influence gameplay direction (stakes/difficulty/branching style).
 
-4. World Constraints
-If the concept implies:
-- Realistic setting → ask about realism boundaries (e.g., investigative depth, violence level).
-- Fantasy/SF setting → ask about rule systems (magic limits, technology level).
-- Mystery → ask about type of mystery (closed room, conspiracy, psychological, etc).
-- Survival → ask about scarcity, time pressure, or danger level.
+## Language & Tone
+- Write ALL labels in Korean.
+- Make the wording immersive and specific to the user's concept.
 
-5. Gameplay Direction
-Include at least ONE question that influences:
-- Difficulty or stakes
-- Branching style (moral dilemma vs puzzle solving vs action-heavy)
-
-6. Question Quality
-- Each question must meaningfully influence future story generation.
-- Avoid superficial flavor-only questions.
-- Questions should reduce ambiguity and strengthen narrative consistency.
-
-7. Question Types
-- Use "select" when structured options make sense.
-- Use "text" for short clarifications.
-- Use "textarea" for deeper creative input.
-- Use "slider" only for intensity/difficulty scales.
-- Do NOT use slider randomly.
-
-8. Language
-- Write ALL question labels in Korean.
-- Make the tone immersive and engaging, not mechanical.
-
-9. Quantity
-- Generate exactly 3 to 5 questions.
-
+## Output Format
 You MUST respond with ONLY a JSON object in this exact schema:
 
 {
-  "title": "string (a short, concept-aware title for the questionnaire)",
+  "title": "string (a short, concept-aware title for the questionnaire in Korean)",
   "questions": [
     {
       "id": "q1",
-      "label": "string (the question text in Korean)",
+      "label": "string (Korean)",
       "type": "select" | "text" | "textarea" | "slider" | "checkbox",
-      "options": ["..."],       
-      "placeholder": "...",     
-      "min": 0, 
-      "max": 10,     
+      "options": ["..."],
+      "placeholder": "...",
+      "min": 0,
+      "max": 10,
       "required": true
     }
   ]
-}`
+}
+
+## Field rules inside the schema
+- If type != "select", set options to [].
+- If type is not "text", set placeholder to "".
+- If type != "slider", keep min=0 and max=10 (ignored by UI).
+`
         },
         {
             role: 'user',
@@ -191,6 +177,14 @@ The openingText must:
 - accentColor must be complementary and readable against themeColor.
 - Do NOT choose random colors. Choose psychologically consistent ones.
 
+9. Auto-Naming and WorldSchema (CRITICAL)
+- You MUST construct a structured "worldSchema" JSON object.
+- If the user did not explicitly provide names for characters, places, or items, YOU MUST GENERATE THEM.
+- Generate a protagonist name, 3+ NPC names, 4+ location names, 4+ item names, and 6+ event flags.
+- Names must be DISTINCT, MEMORABLE, KOREAN, and fit the genre/tone.
+- NEVER use generic placeholders like "주인공", "친구", "어떤 장소", "그 남자" in the schema or the text.
+- Use these newly generated proper nouns inside the openingText.
+
 Language Rule:
 - Write title, systemSynopsis, and openingText in Korean.
 - Use immersive but disciplined prose (avoid excessive purple prose).
@@ -200,9 +194,19 @@ You MUST respond with ONLY a JSON object in this exact schema:
 {
   "title": "string (story title, engaging and thematic)",
   "systemSynopsis": "string (3-5 structured paragraphs clearly covering: world rules, protagonist role, core conflict, escalation path, possible endings)",
-  "openingText": "string (1-2 paragraphs of immersive opening narration)",
+  "openingText": "string (1-2 paragraphs of immersive opening narration using PROPER NOUNS)",
   "themeColor": "#RRGGBB",
-  "accentColor": "#RRGGBB"
+  "accentColor": "#RRGGBB",
+  "worldSchema": {
+    "world": { "genre": "string", "tone": "string", "rules": ["string"] },
+    "protagonist": { "id": "pc", "name": "string", "role": "string", "goal": "string", "limitation": "string" },
+    "locations": [ { "id": "string", "name": "string", "desc": "string", "connectedTo": ["string"] } ],
+    "npcs": [ { "id": "string", "name": "string", "role": "string", "motive": "string", "secret": "string", "relation": "string" } ],
+    "items": [ { "id": "string", "name": "string", "type": "string", "desc": "string", "initialLocationId": "string" } ],
+    "events": [ { "id": "string", "name": "string", "trigger": "string", "effect": "string" } ],
+    "winConditions": [ { "id": "string", "desc": "string", "check": "string" } ],
+    "loseConditions": [ { "id": "string", "desc": "string", "check": "string" } ]
+  }
 }`
         },
         {
@@ -274,6 +278,9 @@ Your primary responsibility is to maintain strong narrative continuity, internal
 ## Story Synopsis (internal reference)
 ${session.synopsis.systemSynopsis}
 
+## World Schema (CRITICAL CONSTRAINTS)
+${JSON.stringify(session.worldSchema || {}, null, 2)}
+
 ## Continuity Context (internal reference)
 You are continuing an existing story.
 
@@ -287,15 +294,15 @@ Do NOT introduce major new world rules or unexplained elements.
 
 ---
 
-## CRITICAL RULE: Choice Anchoring (VERY IMPORTANT)
+## CRITICAL RULE: Choice Anchoring and Proper Nouns (VERY IMPORTANT)
 
-Each choice MUST be directly grounded in elements explicitly mentioned in the current story text.
-
-This means:
-
-- If an object appears in a choice, it must be clearly described in the story text.
-- If a location appears in a choice, it must already exist in the scene.
-- If an NPC appears in a choice, they must have been introduced in the text.
+1. You MUST use the proper nouns defined in the "World Schema". 
+2. Do NOT use generic placeholders like "주인공", "친구", "그 남자", "어떤 방". 
+3. Always refer to the protagonist, NPCs, locations, and items by their exact schema names.
+4. Each choice MUST be directly grounded in elements explicitly mentioned in the current story text.
+5. If an object appears in a choice, it must be clearly described in the story text.
+6. If a location appears in a choice, it must already exist in the scene.
+7. If an NPC appears in a choice, they must have been introduced in the text.
 
 DO NOT introduce new objects, rooms, hidden elements, or structural details in the choices unless they were clearly described earlier in the same scene.
 
@@ -356,19 +363,20 @@ You MUST respond with ONLY a JSON object in this exact schema:
     { "id": "opt2", "text": "string (choice description)" }
   ],
   "updatedState": {
-    "location": "string",
-    "inventory": ["string"],
+    "location": "string (Location ID or Name from Schema)",
+    "inventory": ["string (Item Name)"],
+    "flags": { "flag_key": true },
     "turnCount": number,
     "isEnding": false
   },
   "isEnding": false,
   "endingType": "good" | "bad" | "neutral" | null,
-  "nodeTitle": "string"
+  "nodeTitle": "string (Use Proper Nouns)"
 }`
         },
         {
             role: 'user',
-            content: `## Story So Far\n${contextLines}\n\n## Current State\n${stateInfo}\n\n## Player Action\n${playerAction}`,
+            content: `## Story So Far\n${contextLines}\n\n## Current State\n${stateInfo}\n\n## Current Flags\n${JSON.stringify(state.flags || {})}\n\n## Player Action\n${playerAction}`,
         },
     ];
 
@@ -380,3 +388,5 @@ You MUST respond with ONLY a JSON object in this exact schema:
 
     return { ok: true, data: parsed.data };
 }
+
+

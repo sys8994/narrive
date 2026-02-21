@@ -5,15 +5,15 @@
 /* --- CSS Custom Properties (Theme) --- */
 :root {
   /* Background */
-  --bg-primary: #0f111a;
-  --bg-secondary: #1a1d2e;
-  --bg-tertiary: #232740;
-  --bg-panel: rgba(26, 29, 46, 0.85);
+  --bg-primary: #121212;
+  --bg-secondary: #1a1a1a;
+  --bg-tertiary: #242424;
+  --bg-panel: rgba(26, 26, 26, 0.85);
 
   /* Accent */
-  --accent: #7aa2ff;
-  --accent-hover: #5b88f0;
-  --accent-glow: rgba(122, 162, 255, 0.25);
+  --accent: #e0e0e0;
+  --accent-hover: #ffffff;
+  --accent-glow: rgba(255, 255, 255, 0.15);
 
   /* Text */
   --text-primary: #e8eaf6;
@@ -21,8 +21,8 @@
   --text-muted: #5c6280;
 
   /* Borders */
-  --border: rgba(122, 162, 255, 0.12);
-  --border-hover: rgba(122, 162, 255, 0.3);
+  --border: rgba(255, 255, 255, 0.12);
+  --border-hover: rgba(255, 255, 255, 0.25);
 
   /* Surfaces */
   --surface-glass: rgba(255, 255, 255, 0.04);
@@ -461,8 +461,10 @@ body {
   gap: 10px;
 }
 
-/* --- Session Card --- */
 .session-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 12px;
   border-radius: var(--radius);
   cursor: pointer;
@@ -482,31 +484,109 @@ body {
   box-shadow: 0 0 12px var(--accent-glow);
 }
 
+.session-card__info {
+  flex: 1;
+  min-width: 0;
+  padding-right: 8px;
+}
+
 .session-card__title {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
-  margin-bottom: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.session-card__meta {
-  font-size: 11px;
-  color: var(--text-muted);
+.icon-btn-small {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
+}
+
+.icon-btn-small:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.session-card__menu-wrap {
+  position: relative;
+}
+
+.session-menu-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 4px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  display: none;
+  flex-direction: column;
+  z-index: 200;
+  min-width: 120px;
+}
+
+.session-menu-dropdown--open {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
 }
 
-.session-card__delete {
+.dropdown-item {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--transition);
+}
+
+.dropdown-item:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.dropdown-item:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.dropdown-item.option-delete {
+  color: #ff6b6b;
+}
+
+/* Global Tooltip */
+.global-tooltip {
+  position: fixed;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.5;
+  pointer-events: none;
+  z-index: 9999;
   opacity: 0;
-  transition: opacity var(--transition);
+  transform: translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  white-space: pre-line;
+  box-shadow: var(--shadow);
+  visibility: hidden;
 }
 
-.session-card:hover .session-card__delete {
+.global-tooltip--visible {
   opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
 }
 
 /* --- Story View --- */

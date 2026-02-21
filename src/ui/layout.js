@@ -13,12 +13,12 @@ export function createLayout() {
   app.innerHTML = `
     <header class="app-header" id="app-header">
       <div class="app-header__left">
-        <button class="icon-btn" id="btn-toggle-left" title="세션 목록 접기/펼치기" aria-label="세션 목록 접기/펼치기">☰</button>
+        <button class="icon-btn" id="btn-toggle-left" title="세션 목록 접기/펼치기" aria-label="세션 목록 접기/펼치기"><i class="fa-solid fa-bars"></i></button>
         <div class="app-header__title">✦ Narrive</div>
       </div>
       <div class="app-header__actions">
-        <button class="icon-btn" id="btn-toggle-right" title="스토리 트리 접기/펼치기" aria-label="스토리 트리 접기/펼치기">🌲</button>
-        <button class="icon-btn" id="btn-settings" title="설정" aria-label="설정">⚙</button>
+        <button class="icon-btn" id="btn-toggle-right" title="스토리 트리 접기/펼치기" aria-label="스토리 트리 접기/펼치기"><i class="fa-solid fa-code-fork"></i></button>
+        <button class="icon-btn" id="btn-settings" title="설정" aria-label="설정"><i class="fa-solid fa-gear"></i></button>
       </div>
     </header>
     <div class="app-layout" id="app-layout">
@@ -36,9 +36,9 @@ export function createLayout() {
         <div class="panel-right__header">스토리 트리</div>
         <div class="panel-right__content" id="tree-content"></div>
       </aside>
-    </div>
     <div id="modal-root"></div>
     <div class="toast-container" id="toast-container"></div>
+    <div id="global-tooltip" class="global-tooltip"></div>
   `;
 
   // Elements
@@ -81,6 +81,66 @@ export function createLayout() {
 
   // Click backdrop to close
   backdrop.addEventListener('click', closeAllPanels);
+
+  // Close with Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeAllPanels();
+    }
+  });
+
+  // Global Tooltip Logic
+  const globalTooltip = document.getElementById('global-tooltip');
+  document.addEventListener('mouseover', (e) => {
+    const target = e.target.closest('.tooltip');
+
+    // Do not show tooltip if any dropdown menu is currently open
+    if (document.querySelector('.session-menu-dropdown--open')) {
+      return;
+    }
+
+    if (target && target.dataset.tooltip) {
+      globalTooltip.textContent = target.dataset.tooltip;
+
+      // Position temporarily to calc dimensions
+      globalTooltip.classList.add('global-tooltip--visible');
+      const rect = target.getBoundingClientRect();
+      const tooltipRect = globalTooltip.getBoundingClientRect();
+
+      let left = rect.left + rect.width / 2 - tooltipRect.width / 2;
+
+      // Bound checking
+      if (left < 8) {
+        left = 8;
+      } else if (left + tooltipRect.width > window.innerWidth - 8) {
+        left = window.innerWidth - tooltipRect.width - 8;
+      }
+
+      globalTooltip.style.left = `${left}px`;
+      globalTooltip.style.top = `${rect.bottom + 6}px`;
+    }
+  });
+
+  document.addEventListener('mouseout', (e) => {
+    const target = e.target.closest('.tooltip');
+    if (target) {
+      globalTooltip.classList.remove('global-tooltip--visible');
+    }
+  });
+
+  // Global Dropdown Closer
+  document.addEventListener('click', (e) => {
+    // Hide tooltip immediately when clicking to open a dropdown
+    if (e.target.closest('.btn-session-menu')) {
+      globalTooltip.classList.remove('global-tooltip--visible');
+    }
+
+    if (!e.target.closest('.session-card__menu-wrap')) {
+      document.querySelectorAll('.session-menu-dropdown--open').forEach(el => {
+        el.classList.remove('session-menu-dropdown--open');
+      });
+    }
+  });
 
   return {
     header: document.getElementById('app-header'),
