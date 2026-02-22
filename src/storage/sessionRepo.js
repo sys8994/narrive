@@ -10,6 +10,8 @@
 import * as kv from './kvdb.js';
 
 const INDEX_KEY = 'index:sessions';
+const ACTIVE_SESSION_KEY = 'active:sessionId';
+
 
 /**
  * Get the sessions index map, creating it if missing.
@@ -63,4 +65,23 @@ export async function deleteSession(id) {
     delete index[id];
     await kv.put(INDEX_KEY, index);
     await kv.del(`session:${id}`);
+}
+/**
+ * Get the ID of the last active session.
+ * @returns {Promise<string|null>}
+ */
+export async function getActiveSessionId() {
+    return (await kv.get(ACTIVE_SESSION_KEY)) || null;
+}
+
+/**
+ * Set the ID of the last active session.
+ * @param {string|null} id
+ */
+export async function setActiveSessionId(id) {
+    if (id) {
+        await kv.put(ACTIVE_SESSION_KEY, id);
+    } else {
+        await kv.del(ACTIVE_SESSION_KEY);
+    }
 }

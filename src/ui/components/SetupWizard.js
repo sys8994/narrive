@@ -181,8 +181,10 @@ export function renderSetupWizard({ container, onComplete, onCancel }) {
     const data = result.data;
     onComplete({
       title: data.title || '새 모험',
-      systemSynopsis: data.systemSynopsis || '',
+      publicWorld: data.publicWorld || '',
+      hiddenPlot: data.hiddenPlot || '',
       openingText: data.openingText || '',
+
       themeColor: data.themeColor || '#0f111a',
       accentColor: data.accentColor || '#7aa2ff',
       worldSchema: data.worldSchema || null,

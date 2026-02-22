@@ -7,16 +7,18 @@
  * Render the main application layout into #app.
  * Returns references to key container elements.
  */
-export function createLayout() {
+export function createLayout({ onTitleClick } = {}) {
   const app = document.getElementById('app');
 
   app.innerHTML = `
     <header class="app-header" id="app-header">
       <div class="app-header__left">
         <button class="icon-btn" id="btn-toggle-left" title="세션 목록 접기/펼치기" aria-label="세션 목록 접기/펼치기"><i class="fa-solid fa-bars"></i></button>
-        <div class="app-header__title">✦ Narrive</div>
+        <div class="app-header__title" id="app-title" style="cursor: pointer;">✦ Narrive</div>
       </div>
+
       <div class="app-header__actions">
+        <button class="icon-btn" id="btn-toggle-json" title="JSON 데이터 보기" aria-label="JSON 데이터 보기"><i class="fa-solid fa-file-code"></i></button>
         <button class="icon-btn" id="btn-toggle-right" title="스토리 트리 접기/펼치기" aria-label="스토리 트리 접기/펼치기"><i class="fa-solid fa-code-fork"></i></button>
         <button class="icon-btn" id="btn-settings" title="설정" aria-label="설정"><i class="fa-solid fa-gear"></i></button>
       </div>
@@ -30,6 +32,7 @@ export function createLayout() {
       <main class="panel-center" id="panel-center">
         <div class="panel-center__content" id="story-content">
           <div class="story-container" id="story-container"></div>
+          <div class="json-viewer-container hidden" id="json-viewer-container"></div>
         </div>
       </main>
       <aside class="panel-right" id="panel-right">
@@ -82,7 +85,14 @@ export function createLayout() {
   // Click backdrop to close
   backdrop.addEventListener('click', closeAllPanels);
 
+  // Home Navigation
+  const appTitle = document.getElementById('app-title');
+  if (appTitle && onTitleClick) {
+    appTitle.addEventListener('click', onTitleClick);
+  }
+
   // Close with Escape key
+
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       closeAllPanels();
@@ -148,10 +158,12 @@ export function createLayout() {
     savelistHeader: document.getElementById('savelist-header'),
     savelistBody: document.getElementById('savelist-body'),
     storyContainer: document.getElementById('story-container'),
+    jsonViewerContainer: document.getElementById('json-viewer-container'),
     treeContent: document.getElementById('tree-content'),
     modalRoot: document.getElementById('modal-root'),
     toastContainer: document.getElementById('toast-container'),
     btnSettings: document.getElementById('btn-settings'),
+    btnToggleJson: document.getElementById('btn-toggle-json'),
     closeAllPanels,
   };
 }

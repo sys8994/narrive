@@ -12,9 +12,12 @@
 import { getPathToRoot } from '../../core/treeEngine.js';
 
 // ─── Configurable Timing ─────────────────────────────────────────
-const STREAM_WORD_DELAY_MS = 30;   // delay between each word appearing
-const STREAM_FADE_MS = 80;   // how long each word's fade-in takes
+const STREAM_WORD_DELAY_MS = 35;   // delay between each word appearing
+const STREAM_FADE_MS = 100;   // how long each word's fade-in takes
 const STREAM_OPTION_DELAY_MS = 100; // delay before each option button appears
+const STREAM_START_DELAY_MS = 400;  // delay before turn start
+const STREAM_BREAK_DELAY_MS = 300;  // delay between parts (header -> text -> options)
+
 
 /**
  * Render the current story node in the center panel.
@@ -72,7 +75,7 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
           const badge = btn.querySelector('.option-btn__badge');
           if (btn.dataset.optionId === node.selectedOptionId) {
             btn.classList.add('option-btn--was-selected');
-            if (badge) badge.textContent = '← 이전 선택';
+            if (badge) badge.textContent = '(Selected)';
           } else {
             btn.classList.remove('option-btn--was-selected');
             if (badge) badge.textContent = '';
@@ -104,10 +107,6 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
     headerEl.className = 'story-turn__header';
     headerEl.style.cssText = 'font-size: 16px; opacity: 0.5; margin-bottom: 12px; padding-top: 12px; font-weight: 500;';
 
-    const turnLabel = node.depth === 0 ? 'Intro' : `Turn #${node.depth}`;
-    const title = node.meta?.title || '진행';
-    const location = (node.stateSnapshot && node.stateSnapshot.location) ? ` @ ${node.stateSnapshot.location}` : '';
-    headerEl.textContent = `${turnLabel}. ${title}${location}`;
     turnEl.appendChild(headerEl);
 
     // If it's an ending
@@ -124,24 +123,40 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
 
     container.appendChild(turnEl);
 
+    const turnLabel = node.depth === 0 ? 'Intro' : `Page #${node.depth}`;
+    const title = node.meta?.title || '진행';
+    const location = (node.stateSnapshot && node.stateSnapshot.location) ? ` @ ${node.stateSnapshot.location}` : '';
     const isLastNode = (i === activePath.length - 1);
     const shouldStream = isLastNode && !skipStreaming;
 
+    const headerText = `${turnLabel}. ${title}${location}`;
+
     // --- Always attach options for all turns (past and current) ---
     if (shouldStream) {
-      // For the last node with streaming: set spacer, scroll, stream, then attach options
+      // For the last node with streaming: set spacer, scroll, and start sequence
+      headerEl.textContent = ''; // Clear for streaming
       setScrollSpacer(container);
+
       setTimeout(() => {
         turnEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 50);
+      }, 100);
 
-      streamText(textEl, node.text, () => {
+      // Systematic sequential reveal
+      (async () => {
+        await sleep(STREAM_START_DELAY_MS);
+
+        await streamText(headerEl, headerText);
+        await sleep(STREAM_BREAK_DELAY_MS);
+
+        await streamText(textEl, node.text);
+        await sleep(STREAM_BREAK_DELAY_MS);
+
         attachOptions(container, turnEl, node, session, onOptionSelect, false);
-        // Shrink spacer after options are fully attached
         shrinkScrollSpacer(container, turnEl);
-      });
+      })();
     } else {
       // Instant render (past turns or skipStreaming)
+      headerEl.textContent = headerText;
       textEl.textContent = node.text;
       attachOptions(container, turnEl, node, session, onOptionSelect, true);
 
@@ -204,37 +219,44 @@ function attachOptions(container, turnEl, node, session, onOptionSelect, instant
 
 /**
  * Stream text word-by-word into an element with fade-in.
+ * Returns a Promise that resolves when streaming is complete.
  */
 function streamText(el, text, onDone) {
-  const words = text.split(/(\s+)/); // keep whitespace tokens
-  let i = 0;
+  return new Promise((resolve) => {
+    const words = text.split(/(\s+)/); // keep whitespace tokens
+    let i = 0;
 
-  function next() {
-    if (i >= words.length) {
-      if (onDone) onDone();
-      return;
+    function next() {
+      if (i >= words.length) {
+        if (onDone) onDone();
+        resolve();
+        return;
+      }
+
+      const token = words[i++];
+
+      // Whitespace tokens: just append as-is
+      if (/^\s+$/.test(token)) {
+        el.appendChild(document.createTextNode(token));
+        next();
+        return;
+      }
+
+      const span = document.createElement('span');
+      span.className = 'stream-word';
+      span.style.setProperty('--stream-fade-ms', `${STREAM_FADE_MS}ms`);
+      span.textContent = token;
+      el.appendChild(span);
+
+      setTimeout(next, STREAM_WORD_DELAY_MS);
     }
 
-    const token = words[i++];
+    next();
+  });
+}
 
-    // Whitespace tokens: just append as-is
-    if (/^\s+$/.test(token)) {
-      el.appendChild(document.createTextNode(token));
-      // No delay for whitespace, process next immediately
-      next();
-      return;
-    }
-
-    const span = document.createElement('span');
-    span.className = 'stream-word';
-    span.style.setProperty('--stream-fade-ms', `${STREAM_FADE_MS}ms`);
-    span.textContent = token;
-    el.appendChild(span);
-
-    setTimeout(next, STREAM_WORD_DELAY_MS);
-  }
-
-  next();
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -266,7 +288,7 @@ function buildOptions(optList, node, onOptionSelect, instant) {
     const badge = document.createElement('span');
     badge.className = 'option-btn__badge';
     if (wasSelected) {
-      badge.textContent = '← 이전 선택';
+      badge.textContent = '(Selected)';
     }
     btn.appendChild(badge);
 
@@ -449,8 +471,20 @@ function renderWelcome(container) {
  */
 function renderEnding(container, node, skipStreaming) {
   const endingType = (node.meta && node.meta.endingType) || 'neutral';
-  const badgeClass = `ending-badge--${endingType}`;
-  const badgeLabel = { good: 'GOOD ENDING', bad: 'BAD ENDING', neutral: 'ENDING' }[endingType] || 'ENDING';
+
+  // Map internal types to display labels and CSS classes
+  const typeMap = {
+    win: { label: 'VICTORY', cls: 'ending-badge--good' },
+    lose: { label: 'GAME OVER', cls: 'ending-badge--bad' },
+    good: { label: 'GOOD ENDING', cls: 'ending-badge--good' },
+    bad: { label: 'BAD ENDING', cls: 'ending-badge--bad' },
+    neutral: { label: 'ENDING', cls: 'ending-badge--neutral' }
+  };
+
+  const config = typeMap[endingType] || typeMap.neutral;
+  const badgeClass = config.cls;
+  const badgeLabel = config.label;
+
 
   const endingDiv = document.createElement('div');
   endingDiv.className = 'ending-container';

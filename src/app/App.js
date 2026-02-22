@@ -14,9 +14,14 @@ import { renderSaveList } from '../ui/components/SaveList.js';
 import { renderSetupWizard } from '../ui/components/SetupWizard.js';
 import { renderStoryView, renderStoryError } from '../ui/components/StoryView.js';
 import { renderTreeNav } from '../ui/components/TreeNav.js';
+import { renderJsonViewer } from '../ui/components/JsonViewer.js';
+import { renderHomeView } from '../ui/components/HomeView.js';
+
 import * as sessionManager from '../core/sessionManager.js';
 import * as gameEngine from '../core/gameEngine.js';
+import { initSeedPool } from '../core/seedManager.js';
 import { getSettings } from '../llm/apiClient.js';
+
 
 /** @type {ReturnType<typeof createStore>} */
 let store;
@@ -33,10 +38,14 @@ export async function init() {
         appState: 'idle',      // 'idle' | 'setup' | 'playing'
         sessionList: [],
         activeSessionId: null,
+        jsonViewEnabled: false,
     });
 
     // Mount layout
-    els = createLayout();
+    els = createLayout({
+        onTitleClick: handleHome
+    });
+
 
     // Init toast
     initToast(els.toastContainer);
@@ -49,6 +58,23 @@ export async function init() {
         });
     });
 
+    // Wire JSON view button
+    els.btnToggleJson.addEventListener('click', () => {
+        const { jsonViewEnabled } = store.getState();
+        const nextState = !jsonViewEnabled;
+        store.setState({ jsonViewEnabled: nextState });
+
+        // Toggle UI
+        els.btnToggleJson.classList.toggle('icon-btn--active', nextState);
+        els.storyContainer.classList.toggle('hidden', nextState);
+        els.jsonViewerContainer.classList.toggle('hidden', !nextState);
+
+        if (nextState) {
+            const session = sessionManager.getCurrentSession();
+            renderJsonViewer(els.jsonViewerContainer, session);
+        }
+    });
+
     // Subscribe to store changes → re-render affected components
     store.subscribe((state) => {
         // Re-render is handled via explicit calls for now (MVP simplicity)
@@ -57,10 +83,17 @@ export async function init() {
     // Load sessions index
     await refreshSaveList();
 
-    // Show welcome state
-    renderStoryView({ container: els.storyContainer, session: null });
-    renderTreeNav({ container: els.treeContent, session: null, onNodeClick: () => { } });
+    // Initialize seed pool for setup wizard
+    initSeedPool();
+
+    // Start at Home View
+    handleHome();
+
+
+
 }
+
+
 
 /**
  * Refresh the session list from storage.
@@ -125,7 +158,31 @@ function resetTheme() {
 
 // ─── Handlers ──────────────────────────────────────────────────────
 
+
+async function handleHome() {
+    els.closeAllPanels();
+    resetTheme();
+
+    // Get last active session ID for the "Current" section
+    const lastActiveId = await sessionManager.getActiveSessionId();
+    const sessions = await sessionManager.listSessions();
+
+    store.setState({ appState: 'home', activeSessionId: null });
+
+    renderHomeView({
+        container: els.storyContainer,
+        sessions,
+        lastActiveId,
+        onNewGame: handleNewGame,
+        onLoadSession: handleLoadSession,
+        onDeleteSession: handleDeleteSession,
+    });
+
+    renderTreeNav({ container: els.treeContent, session: null, onNodeClick: () => { } });
+}
+
 function handleNewGame() {
+
     els.closeAllPanels();
     store.setState({ appState: 'setup', activeSessionId: null });
     resetTheme();
@@ -142,13 +199,14 @@ function handleNewGame() {
     renderTreeNav({ container: els.treeContent, session: null, onNodeClick: () => { } });
 }
 
-async function handleSetupComplete({ title, systemSynopsis, openingText, themeColor, accentColor, worldSchema }) {
+async function handleSetupComplete({ title, publicWorld, hiddenPlot, openingText, themeColor, accentColor, worldSchema }) {
     const settings = getSettings();
 
     // Create session
     const session = gameEngine.createSession({
         title,
-        systemSynopsis,
+        publicWorld,
+        hiddenPlot,
         openingText,
         themeColor,
         accentColor,
@@ -156,6 +214,7 @@ async function handleSetupComplete({ title, systemSynopsis, openingText, themeCo
         temperature: settings.temperature,
         worldSchema,
     });
+
 
     sessionManager.setCurrentSession(session);
     store.setState({ appState: 'playing', activeSessionId: session.id });
@@ -221,11 +280,9 @@ async function handleDeleteSession(sessionId) {
     showToast('세션이 삭제되었습니다.', 'info');
 
     if (store.getState().activeSessionId === sessionId) {
-        store.setState({ appState: 'idle', activeSessionId: null });
-        resetTheme();
-        renderStoryView({ container: els.storyContainer, session: null });
-        renderTreeNav({ container: els.treeContent, session: null, onNodeClick: () => { } });
+        handleHome();
     }
+
 
     await refreshSaveList();
 }
@@ -310,6 +367,11 @@ function renderCurrentNode(skipStreaming = false) {
         session,
         onNodeClick: handleTreeNodeClick,
     });
+
+    // Update JSON viewer if enabled
+    if (store.getState().jsonViewEnabled) {
+        renderJsonViewer(els.jsonViewerContainer, session);
+    }
 
     // Fire-and-forget: prefetch all option responses in background
     triggerPrefetch();

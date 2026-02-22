@@ -26,11 +26,17 @@ export function getCurrentSession() {
 
 /**
  * Set the current session (e.g. after creation or load).
- * @param {Object} session
+ * @param {Object|null} session
  */
-export function setCurrentSession(session) {
+export async function setCurrentSession(session) {
     currentSession = session;
+    if (session) {
+        await repo.setActiveSessionId(session.id);
+    } else {
+        await repo.setActiveSessionId(null);
+    }
 }
+
 
 /**
  * List all saved sessions.
@@ -49,9 +55,11 @@ export async function loadSession(id) {
     const blob = await repo.getSession(id);
     if (blob) {
         currentSession = blob;
+        await repo.setActiveSessionId(id);
     }
     return blob;
 }
+
 
 /**
  * Save the current session immediately.
@@ -84,3 +92,12 @@ export async function deleteSession(id) {
         currentSession = null;
     }
 }
+
+/**
+ * Get the last active session ID from storage.
+ * @returns {Promise<string|null>}
+ */
+export async function getActiveSessionId() {
+    return repo.getActiveSessionId();
+}
+
