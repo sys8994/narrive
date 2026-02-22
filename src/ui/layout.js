@@ -128,12 +128,10 @@ export function createLayout() {
     }
   });
 
-  // Global Dropdown Closer
+  // Global Dropdown Closer & Tooltip Hider
   document.addEventListener('click', (e) => {
-    // Hide tooltip immediately when clicking to open a dropdown
-    if (e.target.closest('.btn-session-menu')) {
-      globalTooltip.classList.remove('global-tooltip--visible');
-    }
+    // Hide tooltip on any click
+    globalTooltip.classList.remove('global-tooltip--visible');
 
     if (!e.target.closest('.session-card__menu-wrap')) {
       document.querySelectorAll('.session-menu-dropdown--open').forEach(el => {
