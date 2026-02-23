@@ -116,28 +116,30 @@ async function refreshSaveList() {
 /**
  * Apply theme colors from session data.
  */
-function applyTheme(theme) {
-    if (!theme) return;
-    if (theme.themeColor) {
-        document.body.style.backgroundColor = theme.themeColor;
-        document.documentElement.style.setProperty('--bg-primary', theme.themeColor);
+function applyTheme(session) {
+    if (!session || !session.themeColor) return;
+    const { initialThemeColor, accentColor } = session.themeColor;
+
+    if (initialThemeColor) {
+        document.body.style.backgroundColor = initialThemeColor;
+        document.documentElement.style.setProperty('--bg-primary', initialThemeColor);
         // Derive secondary/panel colors for sidebars + header
-        document.documentElement.style.setProperty('--bg-secondary', blendColor(theme.themeColor, 0.08));
-        document.documentElement.style.setProperty('--bg-panel', blendColor(theme.themeColor, 0.06));
+        document.documentElement.style.setProperty('--bg-secondary', blendColor(initialThemeColor, 0.08));
+        document.documentElement.style.setProperty('--bg-panel', blendColor(initialThemeColor, 0.06));
     }
-    if (theme.accent) {
-        document.documentElement.style.setProperty('--accent', theme.accent);
-        document.documentElement.style.setProperty('--accent-hover', theme.accent);
-        document.documentElement.style.setProperty('--accent-glow', theme.accent + '40');
-        document.documentElement.style.setProperty('--border', theme.accent + '1a');
-        document.documentElement.style.setProperty('--border-hover', theme.accent + '4d');
+    if (accentColor) {
+        document.documentElement.style.setProperty('--accent', accentColor);
+        document.documentElement.style.setProperty('--accent-hover', accentColor);
+        document.documentElement.style.setProperty('--accent-glow', accentColor + '40');
+        document.documentElement.style.setProperty('--border', accentColor + '1a');
+        document.documentElement.style.setProperty('--border-hover', accentColor + '4d');
     }
 }
 
 /**
  * Derive a brighter variant of a hex color for secondary surfaces.
  */
-function blendColor(hex, amount) {
+export function blendColor(hex, amount) {
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
@@ -199,7 +201,7 @@ function handleNewGame() {
     renderTreeNav({ container: els.treeContent, session: null, onNodeClick: () => { } });
 }
 
-async function handleSetupComplete({ title, publicWorld, hiddenPlot, openingText, themeColor, accentColor, worldSchema }) {
+async function handleSetupComplete({ title, publicWorld, hiddenPlot, openingText, initialThemeColor, climaxThemeColor, accentColor, worldSchema }) {
     const settings = getSettings();
 
     // Create session
@@ -208,7 +210,8 @@ async function handleSetupComplete({ title, publicWorld, hiddenPlot, openingText
         publicWorld,
         hiddenPlot,
         openingText,
-        themeColor,
+        initialThemeColor,
+        climaxThemeColor,
         accentColor,
         model: settings.model,
         temperature: settings.temperature,
@@ -220,7 +223,7 @@ async function handleSetupComplete({ title, publicWorld, hiddenPlot, openingText
     store.setState({ appState: 'playing', activeSessionId: session.id });
 
     // Apply theme
-    applyTheme(session.theme);
+    applyTheme(session);
 
     // Show opening text with "start" button and kick off prefetch!
     const prefetchPromise = gameEngine.generateInitialOptions(session);
@@ -269,7 +272,7 @@ async function handleLoadSession(sessionId) {
     }
 
     store.setState({ appState: 'playing', activeSessionId: session.id });
-    applyTheme(session.theme);
+    applyTheme(session);
     renderCurrentNode(true); // instant — loading existing session
     await refreshSaveList();
     showToast('세션을 불러왔습니다.', 'info');

@@ -23,6 +23,8 @@ export function createInitialState() {
         location: '',
         inventory: [],
         flags: {},
+        eventLedger: [],
+        tensionLevel: 1,
         turnCount: 0,
         isEnding: false,
     };
@@ -34,13 +36,14 @@ export function createInitialState() {
  * @param {string} params.title
  * @param {string} params.systemSynopsis
  * @param {string} params.openingText
- * @param {string} params.themeColor
+ * @param {string} params.initialThemeColor
+ * @param {string} params.climaxThemeColor
  * @param {string} params.accentColor
  * @param {string} params.model
  * @param {number} params.temperature
  * @returns {Object} GameSessionBlob
  */
-export function createSession({ title, publicWorld, hiddenPlot, openingText, themeColor, accentColor, model, temperature, worldSchema }) {
+export function createSession({ title, publicWorld, hiddenPlot, openingText, initialThemeColor, climaxThemeColor, accentColor, model, temperature, worldSchema }) {
     const sessionId = generateId();
     const rootId = generateId();
     const timestamp = now();
@@ -64,7 +67,11 @@ export function createSession({ title, publicWorld, hiddenPlot, openingText, the
         title,
         createdAt: timestamp,
         updatedAt: timestamp,
-        theme: { themeColor, accent: accentColor },
+        themeColor: {
+            initialThemeColor: initialThemeColor || '#0f111a',
+            climaxThemeColor: climaxThemeColor || '#000000',
+            accentColor: accentColor || '#ff9e80',
+        },
         synopsis: { publicWorld, hiddenPlot, openingText },
         worldSchema: worldSchema || null,
 
@@ -94,6 +101,8 @@ export async function generateInitialOptions(session) {
         location: (data.updatedState && data.updatedState.location) || session.gameState.location,
         inventory: (data.updatedState && data.updatedState.inventory) || [...session.gameState.inventory],
         flags: { ...session.gameState.flags, ...((data.updatedState && data.updatedState.flags) || {}) },
+        eventLedger: (data.updatedState && data.updatedState.eventLedger) || [...session.gameState.eventLedger],
+        tensionLevel: (data.updatedState && data.updatedState.tensionLevel) || session.gameState.tensionLevel || 1,
         turnCount: 1,
         isEnding: data.isEnding || false,
     };
@@ -109,13 +118,17 @@ export async function generateInitialOptions(session) {
         isEnding: data.isEnding || false,
         meta: { title: data.nodeTitle || `Turn 1` },
         visited: true,
+        turnSummary: data.turnSummary || '',
     };
 
     if (data.isEnding && data.endingType) {
         newNode.meta.endingType = data.endingType;
     }
 
-    rootNode.options = [{ id: 'start', text: '모험 시작' }];
+    rootNode.options = [
+        { id: 'start', text: '모험 시작' },
+        { id: 'new_start', text: '새 모험 시작' }
+    ];
     rootNode.selectedOptionId = 'start';
 
     tree.addNode(session, newNode);
@@ -174,6 +187,8 @@ export async function progressTurn(session, optionId, customText) {
         location: (data.updatedState && data.updatedState.location) || parentState.location,
         inventory: (data.updatedState && data.updatedState.inventory) || [...parentState.inventory],
         flags: { ...parentState.flags, ...((data.updatedState && data.updatedState.flags) || {}) },
+        eventLedger: (data.updatedState && data.updatedState.eventLedger) || [...parentState.eventLedger],
+        tensionLevel: (data.updatedState && data.updatedState.tensionLevel) || parentState.tensionLevel || 1,
         turnCount: parentState.turnCount + 1,
         isEnding: data.isEnding || false,
     };
@@ -190,6 +205,7 @@ export async function progressTurn(session, optionId, customText) {
         isEnding: data.isEnding || false,
         meta: { title: data.nodeTitle || `Turn ${newState.turnCount}` },
         visited: true,
+        turnSummary: data.turnSummary || '',
     };
 
     // If it's an ending, add ending type
@@ -263,6 +279,8 @@ export async function prefetchAllOptions(session) {
                 location: (data.updatedState && data.updatedState.location) || parentState.location,
                 inventory: (data.updatedState && data.updatedState.inventory) || [...parentState.inventory],
                 flags: { ...parentState.flags, ...((data.updatedState && data.updatedState.flags) || {}) },
+                eventLedger: (data.updatedState && data.updatedState.eventLedger) || [...parentState.eventLedger],
+                tensionLevel: (data.updatedState && data.updatedState.tensionLevel) || parentState.tensionLevel || 1,
                 turnCount: parentState.turnCount + 1,
                 isEnding: data.isEnding || false,
             };
@@ -278,6 +296,7 @@ export async function prefetchAllOptions(session) {
                 isEnding: data.isEnding || false,
                 meta: { title: data.nodeTitle || `Turn ${newState.turnCount}` },
                 visited: false,
+                turnSummary: data.turnSummary || '',
             };
 
             if (data.isEnding && data.endingType) {

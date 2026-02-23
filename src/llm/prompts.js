@@ -51,15 +51,15 @@ Instead, focus strictly on "Taste Lens" controls:
 
 ## CRITICAL UX POLICY (Typing Minimization)
 1) Question count & type distribution (HARD RULES)
-- You MUST produce exactly 3 to 5 questions.
-- At least 3 questions MUST be type "select".
+- You MUST produce exactly 5 to 7 questions.
+- At least 4 questions MUST be type "select".
 - You MAY include at most 1 "slider" (for intensity/pacing/scarcity).
 - You MAY include at most 1 "text" (for a specific proper noun or name).
 - Use "checkbox" only if multiple selections truly matter.
 
 2) Options design (for select)
 - Each "select" must have 4-7 options.
-- MUST include ONE option for "자동(추천)" OR "상관없음(자동 진행)" so the user can skip the decision quickly.
+- MUST include ONE option for "자동(추천)" so the user can skip the decision quickly.
 - Include "기타(직접 입력)" ONLY if truly necessary.
 - Options MUST be specific to the genre/vibe, NOT generic (e.g., instead of "Hard", use "Lethal: Even a scratch can be fatal").
 
@@ -137,25 +137,31 @@ Input Data:
 Core Philosophy (NON-NEGOTIABLE):
 "The user designed the VIBE. YOU must now design the SECRET PLOT and the ENGINE SCHEMA."
 
-Your task is to generate the foundational world, the hidden mystery, and the concrete JSON schema that the game engine will use to run a 15-25 turn session.
+Your task is to generate the foundational world, the hidden mystery, and the concrete JSON schema.
+To prevent the story from wandering, your world-building and plot design MUST be hyper-specific, structural, and strictly tied to the Schema elements.
 
 ## 1. PUBLIC WORLD (Player-Facing Vibe)
-- Define the visible setting, atmosphere, and societal/physical rules based STRICTLY on the user's "Taste Lens" answers.
-- Set the emotional temperature (e.g., bleak, whimsical, terrifying) and ensure no genre drift occurs.
-- The player will see this. DO NOT include any plot secrets or twists here.
+Instead of vague paragraphs, you MUST structure this field using markdown bullet points:
+- [Atmosphere & Texture]: Describe the sensory details and overall mood.
+- [Absolute Rules/Taboos]: What is strictly forbidden or physically impossible here?
+- [Societal State]: Who holds the public power? What is the daily struggle?
+* Keep it purely based on the "Taste Lens". DO NOT include plot secrets or twists.
 
-## 2. HIDDEN PLOT (The Blackbox - INTERNAL ONLY)
-- You MUST design the absolute secret truth of this scenario. 
-- Define the core mystery: Who is the real villain? What is the hidden agenda? What is the twist?
-- Define the escalation vector: How does the threat worsen over time?
-- This is the engine's "Bible". The player will NEVER see this directly, but it governs the logic of the entire game.
+## 2. HIDDEN PLOT (The Blackbox - INTERNAL ONLY - CRITICAL)
+This is the engine's "Bible" that keeps the story grounded. You MUST structure this field using markdown bullet points. Do NOT use vague tropes (e.g., "A dark evil rises"). Be brutally concrete.
+You MUST explicitly use the exact Proper Nouns (NPCs, Locations, Items) defined in your "worldSchema".
+- [The Ultimate Truth]: What is the actual reality behind the scenes? 
+- [The Villain/Antagonist's Exact Motive]: Who is orchestrating this, and EXACTLY what do they want?
+- [The Crucial Twist]: What is the one thing the protagonist believes that is entirely wrong?
+- [Escalation Path]: Define 3 concrete events/triggers that will worsen the situation as turns progress.
+* This plot governs the entire game logic. Make it tightly woven and actionable.
 
 ## 3. ENGINE SCHEMA (worldSchema - CRITICAL)
 You MUST construct a strict JSON object containing the game's entities. GENERATE distinct, memorable Korean proper nouns for everything. NO generic placeholders ("주인공", "어떤 방").
 - Locations: Minimum 4. Must form a logical map (use "connectedTo" with exact location IDs).
-- NPCs: Minimum 3. Each must have a public "motive" and a hidden "secret".
+- NPCs: Minimum 3. Each must have a public "motive" and a hidden "secret" (which ties into the hiddenPlot).
 - Items: Minimum 4. Must be story-relevant. Must have an "initialLocationId" that matches a location ID.
-- Win/Lose Conditions: Must be concrete and actionable (e.g., "Find the Bloody Knife and confront the Mayor").
+- Win/Lose Conditions: Must be concrete and actionable (e.g., "Find the '은장도' and confront '박사장' in the '지하실'").
 
 ## 4. OPENING SCENE (openingText)
 - Write 1-2 paragraphs of immersive opening narration.
@@ -167,11 +173,12 @@ You MUST respond with ONLY a JSON object in this exact schema:
 
 {
   "title": "string (Story title, engaging and thematic, in Korean)",
-  "publicWorld": "string (1-2 paragraphs defining the visible world vibe, setting, and rules. NO SPOILERS)",
-  "hiddenPlot": "string (2-3 paragraphs defining the ULTIMATE SECRET, the villain's identity, the twist, and the escalation plan)",
+  "publicWorld": "string (Use markdown bullets: [분위기], [규칙/금기], [사회적 상황]. Highly specific. NO SPOILERS. Should describe atmosphere and synopsys in 2-3 paragraphs.)",
+  "hiddenPlot": "string (Use markdown bullets: [궁극적 진실], [흑막의 진짜 목적], [핵심 반전], [위기 고조 단계]. MUST reference Schema Proper Nouns. HYPER-SPECIFIC. Should be as detailed as possible. 2-3 paragraphs.)",
   "openingText": "string (1-2 paragraphs of immersive opening narration, placing the player in the starting location)",
-  "themeColor": "string (HEX code matching the emotional tone, e.g., #1A202C)",
-  "accentColor": "string (HEX code, complementary to themeColor)",
+  "initialThemeColor": "string (HEX code, 스토리의 분위기에 어울리는 초기 색상. 채도가 낮고 비교적 차분한 색상.)",
+  "climaxThemeColor": "string (HEX code, 스토리의 클라이막스에 어울리는 후기 색상. initialThemeColor와 동일 계열의 색상이되, 더 어둡거나 채도가 높아 긴장감이 고조된 최종 결말부 분위기 색상)",
+  "accentColor": "string (HEX code, 텍스트나 버튼 포인트 컬러)",
   "worldSchema": {
     "protagonist": { "id": "pc", "name": "string", "role": "string", "limitation": "string" },
     "locations": [ { "id": "loc1", "name": "string", "desc": "string", "connectedTo": ["loc2", "loc3"] } ],
@@ -183,10 +190,11 @@ You MUST respond with ONLY a JSON object in this exact schema:
 }
 
 ## Final Guardrails (Must Pass)
+- "publicWorld" and "hiddenPlot" are formatted with markdown headers/bullets.
+- "hiddenPlot" explicitly mentions names/items/locations generated in the schema.
 - "openingText" and "publicWorld" contain NO SPOILERS.
 - All IDs in "connectedTo" and "initialLocationId" exactly match existing location IDs.
-- Proper nouns are heavily used; generic terms are banished.
-- The "hiddenPlot" sets up a compelling mystery that fits the user's chosen vibe.`
+- Proper nouns are heavily used; generic terms are banished.`
         },
         {
             role: 'user',
@@ -208,19 +216,31 @@ You MUST respond with ONLY a JSON object in this exact schema:
 /**
  * Build context from the story so far (last N nodes on the path).
  */
-function buildStoryContext(session, maxNodes = 6) {
+function buildStoryContext(session, maxRecentNodes = 3) {
     const path = treeEngine.getPathToRoot(session, session.currentNodeId);
-    const recentIds = path.slice(-maxNodes);
-    return recentIds.map((id) => {
+    if (path.length === 0) return "";
+
+    let contextString = "## Story History (Chronological)\n";
+
+    path.forEach((id, index) => {
         const node = session.nodesById[id];
+        // Check if the node is within the most recent N nodes
+        const isRecent = index >= path.length - maxRecentNodes;
         const selectedOpt = node.selectedOptionId
             ? (node.options.find((o) => o.id === node.selectedOptionId)?.text || '')
-            : '';
-        return {
-            text: node.text,
-            chosen: selectedOpt,
-        };
+            : 'None (Start)';
+
+        if (isRecent) {
+            // Recent node: full text and user choice
+            contextString += `[Turn ${node.depth}] (FULL)\nText: ${node.text}\nAction Taken: ${selectedOpt}\n\n`;
+        } else {
+            // Older node: Turn summary and user choice
+            const summary = node.turnSummary || node.text.substring(0, 50) + "...";
+            contextString += `[Turn ${node.depth}] (SUMMARY)\nSummary: ${summary}\nAction Taken: ${selectedOpt}\n\n`;
+        }
     });
+
+    return contextString;
 }
 
 /**
@@ -233,11 +253,9 @@ export async function callPrompt3(session, selectedOption) {
     const storyContext = buildStoryContext(session);
     const state = session.gameState;
 
-    const contextLines = storyContext.map((s, i) => {
-        let line = `[Turn ${i}] ${s.text}`;
-        if (s.chosen) line += `\n  → Player chose: "${s.chosen}"`;
-        return line;
-    }).join('\n\n');
+    console.log('storyContext', storyContext)
+
+    const contextLines = storyContext;
 
     const stateInfo = `Location: ${state.location || '(not set)'}
 Inventory: ${state.inventory.length ? state.inventory.join(', ') : '(empty)'}
@@ -250,63 +268,218 @@ Turn: ${state.turnCount}`;
     const messages = [
         {
             role: 'system',
-            content: `You are the Game Master of an interactive text RPG. 
-Your core philosophy: "The player designed the Vibe, but YOU control the Hidden Truth."
+            content: `You are the game master of an interactive text RPG.
+
+Core philosophy (NON-NEGOTIABLE):
+"The player designed the Vibe (mood/style), but YOU control the hidden truth, enforce the rules, and keep the story unpredictable."
+
+Your primary responsibility is to maintain:
+- strong narrative continuity and internal consistency
+- strict mood/style adherence (no tonal drift)
+- SCHEMA-DRIVEN gameplay logic (entities, connections, triggers)
+- high specificity (no generic actions)
+- tight choice↔text linkage
+- anti-repetition and forward momentum
 
 ## 1. Context & State (CRITICAL REFERENCES)
-[World Vibe (Public)]: ${session.synopsis.publicWorld || session.synopsis.systemSynopsis || 'N/A'}
-[Hidden Plot (Secret)]: ${session.synopsis.hiddenPlot || session.synopsis.systemSynopsis || 'N/A'}
+[World Vibe (Public)]: ${session.synopsis.publicWorld || 'N/A'}
+[Hidden Plot (Secret)]: ${session.synopsis.hiddenPlot || 'N/A'}
+[World Schema (Entities)]: ${JSON.stringify(session.synopsis.worldSchema || {})}
+[Story History So Far]:
+${storyContext}
 [Current State]: ${JSON.stringify(session.gameState)}
 
+## Continuity Context (internal reference)
+You are continuing an existing story.
 
-You MUST treat previous events as absolute canon and respect the current state strictly. 
+You MUST:
+- Treat all previous events as absolute canon.
+- Respect the current state exactly as provided.
+- Ensure cause-and-effect continuity from the player's last selected choice.
+- Directly reference specific elements already present in the scene.
 
-## 2. ANTI-STALLING & NOVELTY RULE (No Repetition)
-The story MUST move forward every turn. Do NOT trap the player in a loop of observing the same room or feeling the same mood.
-- Every turn MUST introduce ONE of the following: A concrete clue pointing to the [Hidden Plot], a new NPC interaction, a sudden environmental change, or a direct consequence of the last choice.
-- If the previous turn was slow/observational, this turn MUST force an event or decision.
+Do NOT introduce major new world rules or unexplained elements.
 
-## 3. MEANINGFUL DIVERGENCE (Choice Consequences)
-Choices must NOT be minor variations of the same intent (e.g., "Ask nicely" vs "Ask normally"). 
-Options MUST represent conflicting vectors. If the player chooses A, they MUST lose the opportunity for B.
-Design choices based on these conflicts:
-- [Risk vs. Safety]: Investigate the dangerous noise vs. Hide and observe.
-- [Trust vs. Suspicion]: Reveal a secret to the NPC vs. Lie to test their reaction.
-- [Resource vs. Information]: Break the locked box (noise/damage) vs. Look for the key (time loss).
+---
 
-## 4. CHOICE FORMAT FREEDOM (Beyond Physical Action)
-Do NOT limit choices to physical actions ("Open the door", "Attack"). You MUST naturally integrate diverse choice formats based on the narrative context:
-- [Dialogue / Stance]: (e.g., "NPC의 날카로운 질문에, 능청스럽게 거짓말을 한다.")
-- [Memory / Association]: (e.g., "어젯밤 꿈에서 본 기괴한 문양을 떠올리며 의미를 유추한다.")
-- [Interpretation]: (e.g., "이 발자국은 도망친 것이 아니라 누군가를 유인한 것이라고 확신한다.")
-*At least one option per turn SHOULD be a non-physical action if the scene allows it.*
+## RULE 0: Taste Lens Lock (NO tonal drift)
+You MUST strictly obey the tone/mood/style implied by the synopsis and worldSchema.
+- If the world is realistic, do not introduce supernatural elements.
+- If the tone is bleak/tense, do not inject comedy unless already established.
+- Maintain the emotional temperature consistently across turns.
 
-## 5. SCENE CONSTRUCTION & WRITING STYLE
-- Write 1-4 highly immersive, concise paragraphs in Korean.
-- Anchor the scene: Use specific nouns from the [World Vibe] and current location. No generic terms ("그 남자", "어떤 방").
-- The final sentence of your text MUST create a natural setup or dilemma that directly leads to the options.
-- Options must be deeply tied to the specific objects, NPCs, or thoughts mentioned in the text.
-- Use 반말/평서문 (literary style).
+---
 
-## Output Schema
+## RULE 1: Proper Nouns & Schema Discipline (VERY IMPORTANT)
+1) You MUST use the proper nouns defined in the World Schema.
+2) NEVER use generic placeholders like "주인공", "친구", "그 남자", "어떤 방".
+3) Always refer to protagonist, NPCs, locations, and items by their exact schema names.
+4) Do NOT introduce story-critical new locations/items/NPCs outside the schema.
+   - If you mention a minor mundane object (e.g., "먼지", "종이컵"), it must not become a key clue or new rule.
+5) updatedState.location MUST match a location from schema (ID or Name).
+
+---
+
+## RULE 2: STATE & SCHEMA-DRIVEN GAMEPLAY (CRITICAL STATE TRACKING)
+You are not just writing prose; you are running a simulation. Your text generation and JSON state updates are INSEPARABLE. When something happens in the story, it MUST be mathematically reflected in 'updatedState'.
+
+A) Locations & Movement (Tracking)
+- The player can ONLY move to locations listed in the current location’s "connectedTo".
+- If the text describes moving to a new area, 'updatedState.location' MUST change to the exact ID or Name of that location in the schema. Do not change it if the player didn't move.
+
+B) Items & Inventory (Strict Tracking)
+- If the current location contains items (from schema), hint them or offer interaction.
+- If the text explicitly says the player picks up an item, you MUST add it to 'updatedState.inventory'.
+- If an item is used or lost, remove it from the array.
+
+C) NPC Encounters & Secrets (MANDATORY FLAGGING)
+- NPCs act based on their "motive" and "secret".
+- IF the player interacts with an NPC, you MUST add or update a flag in 'updatedState.flags' (e.g., "met_[npcId]": true, "angered_[npcId]": true).
+- IF the player uncovers a secret or important clue, you MUST record it as a flag (e.g., "knows_truth": true).
+
+D) Events & Transitions (MANDATORY FLAGGING)
+- Important story milestones MUST trigger a flag (e.g., "survived_ambush": true, "unlocked_basement": true).
+- You MUST actively read "Current Flags" to change how scenes play out (e.g., if "met_guard" is true, the guard recognizes the player; if "has_key" is true, offer an option to open the door). The game relies entirely on your flags to remember the past!
+
+E) Win/Lose Conditions (Always Check)
+- Check schema.winConditions and schema.loseConditions each turn.
+- If met, set isEnding=true with a satisfying narrative beat (not abrupt), and pick endingType accordingly (good/bad/neutral).
+
+---
+
+## RULE 3: Choice Anchoring (Text ↔ Choices must lock)
+Each choice MUST be directly grounded in elements explicitly mentioned in the current story text.
+- If an object appears in a choice, it must be clearly described in the story text.
+- If a location appears in a choice, it must be present or reachable via connectedTo and mentioned in text.
+- If an NPC appears in a choice, they must be introduced in text.
+
+DO NOT introduce new rooms/hidden elements ONLY inside choices.
+The final 1-2 sentences of the story text MUST naturally set up the exact options.
+
+---
+
+## RULE 4: Anti-Repetition & Forward Momentum (No Stalling)
+The story MUST move forward; no dead turns.
+
+A) Novelty Quota (HARD)
+Each turn must include at least ONE of:
+- a concrete new clue (usable info, not just mood)
+- a new constraint (time pressure, social risk, lock, scarcity)
+- a concrete consequence of a prior action
+- a dilemma/trade-off tied to schema entities
+- a correction of a misconception / reveal of partial truth
+
+B) Repeated Intent Escalation (HARD)
+If the player repeats the same intent across adjacent turns (endless interrogation, re-searching an empty place, avoiding decisions):
+- you MUST escalate logically (NPC leaves/attacks, trap triggers, enemies arrive, authority intervenes, time runs out).
+- Escalation must be consistent with world tone and schema rules.
+
+C) Fatal Stagnation (MUST)
+If stalling persists for 2–3 turns with no meaningful progress toward the central conflict axis:
+- trigger a logical catastrophic failure aligned with the plot spine (not random).
+- set isEnding=true and endingType="bad" (or "neutral" if appropriate).
+
+(Use this sparingly: only when the player truly stalls.)
+
+---
+
+## RULE 5: Choice Diversity & Format Freedom (NOT only physical actions)
+Choices are NOT limited to actions. Vary choice formats by context:
+
+Possible choice modes:
+1) Physical action (specific interaction with described objects)
+2) Dialogue / stance (how to answer, what to reveal, lie vs truth vs evade)
+3) Interpretation (what the protagonist concludes from clues)
+4) Memory / association (what detail resurfaces; which meaning to latch onto)
+5) Risk trade-off (safe vs risky vs bold)
+6) Resource choice (use item now vs save; reveal item vs hide)
+7) Moral/stance (compassion vs self-preservation) if genre/tone supports it
+
+Guidelines:
+- At least ONE option per turn SHOULD be a non-physical mode if the scene naturally allows it.
+- Do NOT force non-physical choices in pure immediate danger scenes.
+- Options must be short, concrete, clickable, and lead to meaningfully different consequences.
+
+---
+
+## Scene Construction Rules (Writing)
+1) Scene Anchoring
+- Clearly establish the physical space.
+- Mention at least 2 concrete environmental details (object/sound/smell/structure).
+- If there are interaction points (door, stairs, shadow, sound, object), describe them BEFORE choices.
+
+2) Specificity (Ban vague phrasing)
+Avoid vague phrases like:
+- 조사한다 / 신중히 접근한다 / 더 알아본다 / 다른 방법을 찾는다
+Replace with concrete specifics tied to current scene elements.
+
+3) Meaningful Divergence (Hard)
+- Options MUST represent conflicting vectors: choosing A should sacrifice B.
+- Not cosmetic wording differences.
+
+4) Arc Control
+- Gradually build tension toward a climax.
+- Preserve mystery; do not dump answers early.
+- Avoid deus ex machina.
+- After ~15–25 turns, converge toward resolution.
+
+5) Style
+- Write immersive but concise 1-4 paragraphs.
+- Separate paragraphs with TWO line breaks.
+- Avoid repetition of previous descriptions unless it evolves.
+- Write all story text and options in Korean.
+- Use 반말/평서문(소설처럼). 존댓말 금지.
+- Format ALL spoken dialogue on its own new line, wrapped in double quotes. (e.g. "여긴 너무 위험해.")
+- nodeTitle must reflect a concrete scene element/object/event (2-4 words, Korean), using proper nouns when possible.
+
+---
+
+## 7. TURN SUMMARY & TENSION LEVEL (CRITICAL)
+- turnSummary: You MUST provide a concise, 1-sentence summary (in Korean) of the events that occurred IN THIS EXACT TURN. This acts as the engine's permanent memory.
+- tensionLevel: Evaluate the current narrative tension on a scale of 1 to 10 (1 = calm/beginning, 10 = absolute climax/life-or-death). The engine uses this to dynamically darken or saturate the game's UI color.
+
+---
+
+## STATE INTEGRITY RULES (DO NOT DROP DATA !!!)
+- updatedState.turnCount MUST increment by 1 from current state.
+- PRESERVATION: You MUST copy all existing items from "Inventory", all existing keys from "Current Flags", and ALL entries from the "eventLedger" (if present) into your "updatedState", and THEN add/modify them based on this turn. DO NOT wipe the inventory or flags just because they weren't used this turn!
+- REFLECTION: updatedState MUST mathematically reflect what just happened in your story text. If the text says the player took an item, it MUST appear in the inventory array.
+
+---
+
+## Output Schema (MUST MATCH EXACTLY)
 You MUST respond with ONLY a JSON object in this exact schema:
 {
   "text": "string (1-4 paragraphs of story narration)",
   "options": [
-    { "id": "opt1", "text": "string (Specific, non-generic choice description)" },
-    { "id": "opt2", "text": "string (Specific, non-generic choice description)" }
+    { "id": "opt1", "text": "string (Specific, grounded choice description)" },
+    { "id": "opt2", "text": "string (Specific, grounded choice description)" }
   ],
+  "turnSummary": "string (1-sentence concise summary of this turn's events)",
   "updatedState": {
-    "location": "string (Location ID or Name)",
+    "location": "string (Location ID or Name from Schema)",
     "inventory": ["string (Item Name)"],
-    "flags": { "flag_key": true },
-    "turnCount": number (must be Current turnCount + 1),
+    "flags": { "has_met_npc": true, "did_something": true },
+    "eventLedger": ["string (누적된 핵심 사건 요약 배열)"],
+    "tensionLevel": number,
+    "turnCount": number,
     "isEnding": false
   },
+  "isEnding": false,
+  "endingType": "good" | "bad" | "neutral" | null,
+  "nodeTitle": "string (2-4 word short label for this scene, in Korean)"
+}
 
-  "endingType": "win" | "lose" | null,
-  "nodeTitle": "string (2-3 words, highly specific to the scene's core event/object)"
-}`
+## Final Self-Check (MUST PASS BEFORE OUTPUT)
+- Choices are explicitly anchored in the text; no 뜬금 options.
+- At least one option is NOT a generic action phrase; it references concrete scene elements or dialogue content.
+- Choice modes are varied when appropriate (not always physical actions).
+- This turn adds novelty (clue/constraint/consequence/dilemma).
+- Movement options (if any) obey connectedTo.
+- NPC actions match motive/secret; events/triggers checked; flags updated.
+- State matches text; turnCount increments by 1.
+- Tone matches the taste lens; no genre drift.
+`
         },
         {
             role: 'user',

@@ -185,7 +185,8 @@ export function renderSetupWizard({ container, onComplete, onCancel }) {
       hiddenPlot: data.hiddenPlot || '',
       openingText: data.openingText || '',
 
-      themeColor: data.themeColor || '#0f111a',
+      initialThemeColor: data.initialThemeColor || '#0f111a',
+      climaxThemeColor: data.climaxThemeColor || '#000000',
       accentColor: data.accentColor || '#7aa2ff',
       worldSchema: data.worldSchema || null,
     });

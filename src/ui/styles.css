@@ -598,6 +598,28 @@ body {
   white-space: pre-wrap;
 }
 
+.story-dialogue {
+  font-style: italic;
+  font-weight: 500;
+  display: block;
+  /* Force dialogue to be its own block */
+  margin: 12px 0;
+  color: #f8f9fa;
+  /* Crisper text for dialogue */
+}
+
+.highlight-pc {
+  color: #ff9e80;
+  /* Warm accent color */
+  font-weight: 600;
+}
+
+.highlight-npc {
+  color: #82b1ff;
+  /* Cool accent color */
+  font-weight: 600;
+}
+
 .story-opening {
   font-size: 18px;
   line-height: 1.9;
@@ -1023,17 +1045,11 @@ body {
 .stream-word {
   opacity: 0;
   display: inline;
-  animation: streamReveal var(--stream-fade-ms, 50ms) ease forwards;
+  transition: opacity var(--stream-fade-ms, 50ms) ease;
 }
 
-@keyframes streamReveal {
-  from {
-    opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
+.stream-word.revealed {
+  opacity: 1;
 }
 
 /* --- Retry Banner --- */

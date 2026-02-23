@@ -20,8 +20,7 @@ export function renderHomeView({ container, sessions, lastActiveId, onNewGame, o
     container.innerHTML = `
         <div class="home-view">
             <header class="home-hero">
-                <div class="home-hero__logo">✦ Narrive</div>
-                <h1 class="home-hero__title">Narrive</h1>
+                <h1 class="home-hero__title">✦ Narrive</h1>
                 <p class="home-hero__slogan">Your taste. Your world. Your unknown story.</p>
                 
                 <div class="home-hero__actions">

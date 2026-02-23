@@ -125,11 +125,25 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
 
     const turnLabel = node.depth === 0 ? 'Intro' : `Page #${node.depth}`;
     const title = node.meta?.title || '진행';
-    const location = (node.stateSnapshot && node.stateSnapshot.location) ? ` @ ${node.stateSnapshot.location}` : '';
+
+    let showLocation = false;
+    if (i === 0) {
+      showLocation = true;
+    } else {
+      const prevNodeId = activePath[i - 1];
+      const prevNode = session.nodesById[prevNodeId];
+      const prevLoc = prevNode?.stateSnapshot?.location;
+      const currLoc = node.stateSnapshot?.location;
+      if (currLoc && currLoc !== prevLoc) {
+        showLocation = true;
+      }
+    }
+    const locationStr = (showLocation && node.stateSnapshot?.location) ? ` @ ${node.stateSnapshot.location}` : '';
+
     const isLastNode = (i === activePath.length - 1);
     const shouldStream = isLastNode && !skipStreaming;
 
-    const headerText = `${turnLabel}. ${title}${location}`;
+    const headerText = `${turnLabel}. ${title}${locationStr}`;
 
     // --- Always attach options for all turns (past and current) ---
     if (shouldStream) {
@@ -145,10 +159,16 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
       (async () => {
         await sleep(STREAM_START_DELAY_MS);
 
-        await streamText(headerEl, headerText);
+        await streamText(headerEl, headerText, null);
         await sleep(STREAM_BREAK_DELAY_MS);
 
-        await streamText(textEl, node.text);
+        // Scroll to bottom
+        container.scrollTop = container.scrollHeight;
+
+        // Update theme visuals based on current node tension
+        updateThemeVisuals(session, node.stateSnapshot?.tensionLevel || 1);
+
+        await streamText(textEl, node.text, session.worldSchema);
         await sleep(STREAM_BREAK_DELAY_MS);
 
         attachOptions(container, turnEl, node, session, onOptionSelect, false);
@@ -157,12 +177,18 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
     } else {
       // Instant render (past turns or skipStreaming)
       headerEl.textContent = headerText;
-      textEl.textContent = node.text;
+      textEl.innerHTML = formatStoryText(node.text, session.worldSchema);
       attachOptions(container, turnEl, node, session, onOptionSelect, true);
 
       if (isLastNode) {
-        // Last node rendered instantly (e.g. session load): set spacer + scroll
+        // Last node rendered instantly (e.g. session load): set spacer
         setScrollSpacer(container);
+        // Final scroll and theme update for safety
+        container.scrollTop = container.scrollHeight;
+        const lastNode = session.nodesById[activePath[activePath.length - 1]];
+        if (lastNode) {
+          updateThemeVisuals(session, lastNode.stateSnapshot?.tensionLevel || 1);
+        }
         setTimeout(() => {
           shrinkScrollSpacer(container, turnEl);
           turnEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -217,40 +243,100 @@ function attachOptions(container, turnEl, node, session, onOptionSelect, instant
   // appendStateBar(turnEl, session);
 }
 
+function escapeRegExp(str) {
+  if (!str) return '';
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function formatStoryText(text, schema) {
+  if (!text) return '';
+  let html = escapeHTML(text);
+
+  // Wrap dialogue (double quotes). Matches across standard quotes.
+  html = html.replace(/"([^"]+)"/g, '<span class="story-dialogue">"$1"</span>');
+
+  // Highlight Names
+  if (schema) {
+    const pcName = schema.protagonist?.name;
+    if (pcName) {
+      const re = new RegExp(escapeRegExp(pcName), 'g');
+      html = html.replace(re, `<span class="highlight-pc">${pcName}</span>`);
+    }
+    if (schema.npcs) {
+      schema.npcs.forEach(npc => {
+        const name = npc.name;
+        if (name) {
+          const re = new RegExp(escapeRegExp(name), 'g');
+          html = html.replace(re, `<span class="highlight-npc">${name}</span>`);
+        }
+      });
+    }
+  }
+  return html;
+}
+
+function prepareStreaming(el) {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+  const textNodes = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    textNodes.push(node);
+  }
+
+  const streamSpans = [];
+
+  textNodes.forEach(textNode => {
+    const text = textNode.nodeValue;
+    if (!text.trim()) {
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    const words = text.split(/(\s+)/);
+    words.forEach(word => {
+      if (/^\s+$/.test(word)) {
+        fragment.appendChild(document.createTextNode(word));
+      } else {
+        const span = document.createElement('span');
+        span.className = 'stream-word';
+        span.style.setProperty('--stream-fade-ms', `${STREAM_FADE_MS}ms`);
+        span.textContent = word;
+        fragment.appendChild(span);
+        streamSpans.push(span);
+      }
+    });
+    textNode.parentNode.replaceChild(fragment, textNode);
+  });
+
+  return streamSpans;
+}
+
 /**
  * Stream text word-by-word into an element with fade-in.
+ * Preserves inner HTML.
  * Returns a Promise that resolves when streaming is complete.
  */
-function streamText(el, text, onDone) {
+function streamText(el, text, schema, onDone) {
   return new Promise((resolve) => {
-    const words = text.split(/(\s+)/); // keep whitespace tokens
+    el.innerHTML = formatStoryText(text, schema);
+    const spans = prepareStreaming(el);
     let i = 0;
 
     function next() {
-      if (i >= words.length) {
+      if (i >= spans.length) {
         if (onDone) onDone();
         resolve();
         return;
       }
-
-      const token = words[i++];
-
-      // Whitespace tokens: just append as-is
-      if (/^\s+$/.test(token)) {
-        el.appendChild(document.createTextNode(token));
-        next();
-        return;
-      }
-
-      const span = document.createElement('span');
-      span.className = 'stream-word';
-      span.style.setProperty('--stream-fade-ms', `${STREAM_FADE_MS}ms`);
-      span.textContent = token;
-      el.appendChild(span);
-
+      spans[i].classList.add('revealed');
+      i++;
       setTimeout(next, STREAM_WORD_DELAY_MS);
     }
 
+    if (spans.length === 0) {
+      if (onDone) onDone();
+      resolve();
+      return;
+    }
     next();
   });
 }
@@ -260,14 +346,84 @@ function sleep(ms) {
 }
 
 /**
+ * Interpolate between two HEX colors.
+ * factor: 0.0 (color1) to 1.0 (color2)
+ */
+function interpolateColor(color1, color2, factor) {
+  const hex1 = color1.replace('#', '');
+  const hex2 = color2.replace('#', '');
+
+  const c1 = hex1.length === 3 ? hex1.split('').map(x => x + x).join('') : hex1;
+  const c2 = hex2.length === 3 ? hex2.split('').map(x => x + x).join('') : hex2;
+
+  const result = c1.match(/.{2}/g).map((hex, i) => {
+    const val1 = parseInt(hex, 16);
+    const val2 = parseInt(c2.match(/.{2}/g)[i], 16);
+    const interpolated = Math.round(val1 * (1 - factor) + val2 * factor);
+    return interpolated.toString(16).padStart(2, '0');
+  });
+  return "#" + result.join('');
+}
+
+/**
+ * Dynamically update the background color based on tensionLevel.
+ */
+function updateThemeVisuals(session, tensionLevel) {
+  console.warn('hihi', session, tensionLevel)
+  if (!session || !session.themeColor) return;
+
+  const initialColor = session.themeColor.initialThemeColor || '#0f111a';
+  const climaxColor = session.themeColor.climaxThemeColor || '#000000';
+
+  // tensionLevel (1-10) -> factor (0.0-1.0)
+  const validTension = Math.max(1, Math.min(10, tensionLevel || 1));
+  const factor = (validTension - 1) / 9;
+
+  const currentColor = interpolateColor(initialColor, climaxColor, factor);
+  console.warn('currentColor,', currentColor)
+
+  document.body.style.transition = 'background-color 1.5s ease-in-out';
+  document.body.style.backgroundColor = currentColor;
+
+  // New: Update global CSS variables for universal theme sync
+  document.documentElement.style.setProperty('--bg-primary', currentColor);
+  document.documentElement.style.setProperty('--bg-secondary', blendColor(currentColor, 0.08));
+  document.documentElement.style.setProperty('--bg-panel', blendColor(currentColor, 0.06));
+}
+
+/**
+ * Derive a brighter variant of a hex color for secondary surfaces.
+ */
+function blendColor(hex, amount) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const nr = Math.min(255, Math.round(r + 255 * amount));
+  const ng = Math.min(255, Math.round(g + 255 * amount));
+  const nb = Math.min(255, Math.round(b + 255 * amount));
+  return `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
+}
+
+/**
  * Build and reveal option buttons, optionally with staggered animation.
  */
 function buildOptions(optList, node, onOptionSelect, instant) {
-  if (!node.options || node.options.length === 0) return;
-
   const buttons = [];
+  let options = [...(node.options || [])];
 
-  node.options.forEach((opt) => {
+  // Dynamic fallback for Intro node (Reuse synopsis for new stories)
+  if (node.depth === 0) {
+    if (!options.find(o => o.id === 'start')) {
+      options.unshift({ id: 'start', text: '모험 시작' });
+    }
+    if (!options.find(o => o.id === 'new_start')) {
+      options.push({ id: 'new_start', text: '새 모험 시작' });
+    }
+  }
+
+  if (options.length === 0) return;
+
+  options.forEach((opt) => {
     const btn = document.createElement('button');
     btn.className = 'option-btn';
     btn.dataset.optionId = opt.id;
@@ -508,9 +664,9 @@ function renderEnding(container, node, skipStreaming) {
   container.appendChild(endingDiv);
 
   if (skipStreaming) {
-    textEl.textContent = node.text;
+    textEl.innerHTML = formatStoryText(node.text, null);
   } else {
-    streamText(textEl, node.text, null);
+    streamText(textEl, node.text, null, null);
   }
 }
 

@@ -14,13 +14,12 @@ export function renderJsonViewer(container, session) {
         return;
     }
 
-
     // Define sections we want to display
     const sections = [
         { id: 'session-core', title: 'Core Session Data', data: { id: session.id, title: session.title, createdAt: session.createdAt, updatedAt: session.updatedAt, currentNodeId: session.currentNodeId } },
         { id: 'session-synopsis', title: 'World Synopsis', data: session.synopsis },
         { id: 'session-schema', title: 'World Schema (Protagonist, NPCs, etc.)', data: session.worldSchema },
-        { id: 'session-theme', title: 'Theme Settings', data: session.theme },
+        { id: 'session-theme', title: 'Theme Settings', data: session.themeColor },
         { id: 'session-state', title: 'Current Game State (Flags)', data: session.gameState },
         { id: 'session-nodes', title: 'Story Tree Nodes', data: session.nodesById },
     ];
