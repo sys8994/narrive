@@ -19,7 +19,10 @@ export function renderForm(container, questions) {
 
     questions.forEach((q) => {
         const group = document.createElement('div');
-        group.className = 'form-group';
+        group.className = 'form-group reveal-item';
+        // Add staggered delay based on index
+        const index = questions.indexOf(q);
+        group.style.animationDelay = `${index * 0.08}s`;
 
         const label = document.createElement('label');
         label.className = 'label';
@@ -28,19 +31,39 @@ export function renderForm(container, questions) {
         group.appendChild(label);
 
         let inputEl;
+        let customInputEl = null;
 
         switch (q.type) {
             case 'select': {
                 inputEl = document.createElement('select');
                 inputEl.className = 'select';
                 inputEl.id = `form-${q.id}`;
+
+                customInputEl = document.createElement('input');
+                customInputEl.type = 'text';
+                customInputEl.className = 'input';
+                customInputEl.style.display = 'none';
+                customInputEl.style.marginTop = '8px';
+                customInputEl.placeholder = '직접 입력해주세요...';
+
                 (q.options || []).forEach((opt) => {
                     const option = document.createElement('option');
                     option.value = opt;
                     option.textContent = opt;
                     inputEl.appendChild(option);
                 });
+
+                inputEl.addEventListener('change', (e) => {
+                    if (e.target.value === '기타(직접 입력)') {
+                        customInputEl.style.display = 'block';
+                        customInputEl.focus();
+                    } else {
+                        customInputEl.style.display = 'none';
+                    }
+                });
+
                 group.appendChild(inputEl);
+                group.appendChild(customInputEl);
                 break;
             }
 
@@ -102,7 +125,7 @@ export function renderForm(container, questions) {
             }
         }
 
-        fieldEls[q.id] = { el: inputEl, type: q.type };
+        fieldEls[q.id] = { el: inputEl, type: q.type, customInputEl };
         container.appendChild(group);
     });
 
@@ -114,6 +137,8 @@ export function renderForm(container, questions) {
                     values[id] = field.el.checked;
                 } else if (field.type === 'slider') {
                     values[id] = Number(field.el.value);
+                } else if (field.type === 'select' && field.el.value === '기타(직접 입력)') {
+                    values[id] = field.customInputEl.value.trim() || '기타(직접 입력)';
                 } else {
                     values[id] = field.el.value;
                 }

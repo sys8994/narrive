@@ -10,6 +10,7 @@ import { callPrompt1, callPrompt2 } from '../../llm/prompts.js';
 import { renderForm } from './FormRenderer.js';
 import { showToast } from './Toast.js';
 import { getRandomSeeds } from '../../core/seedManager.js';
+import { loadingManager } from './LoadingManager.js';
 
 /**
  * Render the Setup Wizard in the story container.
@@ -21,6 +22,8 @@ import { getRandomSeeds } from '../../core/seedManager.js';
 export function renderSetupWizard({ container, onComplete, onCancel }) {
   let userBackground = '';
   let formInstance = null;
+  let currentSchema = null;
+  let accumulatedValues = {};
 
   showStep1();
 
@@ -42,15 +45,16 @@ export function renderSetupWizard({ container, onComplete, onCancel }) {
     if (seeds.length > 0) {
       seedHtml = `
                 <div class="seed-list" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
-                    ${seeds.map(s => `
-                        <div class="seed-card" data-hook="${escapeHTML(s.hook)}" style="padding: 16px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: border-color 0.2s; background: var(--bg-panel);">
+                    ${seeds.map((s, index) => `
+                        <div class="seed-card reveal-item" data-hook="${escapeHTML(s.hook)}" 
+                             style="padding: 16px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: border-color 0.2s; background: var(--bg-panel); animation-delay: ${index * 0.1}s;">
                             <div style="font-weight: 600; font-size: 15px; margin-bottom: 8px; color: var(--accent);">${escapeHTML(s.title)} <span style="font-size: 11px; opacity: 0.7; font-weight: normal; margin-left: 8px; color: var(--text-muted);">${escapeHTML(s.tone)}</span></div>
                             <div style="font-size: 14px; margin-bottom: 12px; line-height: 1.5; color: var(--text-primary);">${escapeHTML(s.hook)}</div>
                             <div style="font-size: 12px; color: var(--text-muted);">${s.tags.map(t => `#${escapeHTML(t)}`).join(' ')}</div>
                         </div>
                     `).join('')}
                 </div>
-                <div style="text-align: center; margin-bottom: 24px;">
+                <div class="reveal-item" style="text-align: center; margin-bottom: 24px; animation-delay: ${seeds.length * 0.1}s;">
                     <button class="btn btn-ghost" id="setup-refresh-seeds" style="font-size: 13px;">⟳ 다른 추천 보기</button>
                     <button class="btn btn-ghost" id="setup-manual-toggle" style="font-size: 13px; margin-left: 12px;">✏ 직접 입력하기</button>
                 </div>
@@ -129,54 +133,98 @@ export function renderSetupWizard({ container, onComplete, onCancel }) {
       return;
     }
 
-    showLoading('이야기를 분석하고 있습니다...');
+    loadingManager.startLoading('p1_init', { theme: userBackground.slice(0, 15) });
 
     const result = await callPrompt1(userBackground);
 
     if (!result.ok) {
+      loadingManager.stopLoading("심연을 들여다보는 데 실패했습니다.");
       showError(result.error || 'LLM 호출 실패', () => showStep1());
       return;
     }
 
-    showStep2(result.data);
+    loadingManager.stopLoading("핵심 단서들을 포착했습니다.");
+    currentSchema = result.data;
+    accumulatedValues = {}; // Reset accumulation
+    showStep2('vibe');
   }
 
-  function showStep2(formSchema) {
+  function showStep2(phase) {
+    const isVibe = phase === 'vibe';
+    const phaseTitle = isVibe ? (currentSchema.title || '분위기 설정') : '상황 설정';
+    const phaseSubtitle = isVibe
+      ? '세계관의 분위기와 감성적인 톤을 설정합니다.'
+      : '주인공의 역할과 당면한 구체적인 상황을 설정합니다.';
+
+    // Filter questions by category
+    const filteredQuestions = (currentSchema.questions || []).filter(q => {
+      if (isVibe) return q.category === 'vibe' || !q.category;
+      return q.category === 'situation';
+    });
+
+    // If no questions for this phase, skip to next or finish
+    if (filteredQuestions.length === 0) {
+      if (isVibe) {
+        showStep2('situation');
+      } else {
+        handleStep2Submit();
+      }
+      return;
+    }
+
     container.innerHTML = `
       <div class="setup-wizard">
         <div class="setup-wizard__step">
-          <h2 class="setup-wizard__title">${escapeHTML(formSchema.title || '상세 설정')}</h2>
-          <p class="setup-wizard__subtitle">이야기를 더 풍성하게 만들기 위해 몇 가지 질문에 답해주세요.</p>
+          <div class="setup-wizard__badge">${isVibe ? 'STEP 2: VIBE' : 'STEP 3: SITUATION'}</div>
+          <h2 class="setup-wizard__title">${escapeHTML(phaseTitle)}</h2>
+          <p class="setup-wizard__subtitle">${escapeHTML(phaseSubtitle)}</p>
         </div>
 
         <div id="dynamic-form"></div>
 
         <div style="display: flex; gap: 10px; justify-content: flex-end;">
           <button class="btn btn-secondary" id="setup-back">← 뒤로</button>
-          <button class="btn btn-primary" id="setup-generate">생성 ✦</button>
+          <button class="btn btn-primary" id="setup-next">
+            ${isVibe ? '다음 단계로 (상황 설정) →' : '스토리 생성 시작 ✦'}
+          </button>
         </div>
       </div>
     `;
 
     const formContainer = container.querySelector('#dynamic-form');
-    formInstance = renderForm(formContainer, formSchema.questions || []);
+    formInstance = renderForm(formContainer, filteredQuestions);
 
-    container.querySelector('#setup-back').addEventListener('click', showStep1);
-    container.querySelector('#setup-generate').addEventListener('click', handleStep2Submit);
+    container.querySelector('#setup-back').addEventListener('click', () => {
+      if (isVibe) showStep1();
+      else showStep2('vibe');
+    });
+
+    container.querySelector('#setup-next').addEventListener('click', () => {
+      const stepValues = formInstance.getValues();
+      Object.assign(accumulatedValues, stepValues);
+
+      if (isVibe) {
+        showStep2('situation');
+      } else {
+        handleStep2Submit();
+      }
+    });
   }
 
   async function handleStep2Submit() {
-    if (!formInstance) return;
+    // Collect Vibe and Situation context for dynamic loading text
+    const vibeCtx = accumulatedValues.vibe || currentSchema.title || "미지의 모험";
+    loadingManager.startLoading('p2_generate', { theme: vibeCtx });
 
-    const formValues = formInstance.getValues();
-    showLoading('시놉시스를 생성하고 있습니다...');
-
-    const result = await callPrompt2(userBackground, formValues);
+    const result = await callPrompt2(userBackground, accumulatedValues);
 
     if (!result.ok) {
-      showError(result.error || 'LLM 호출 실패', () => showStep2({}));
+      loadingManager.stopLoading("운명의 실을 잇는 데 실패했습니다.");
+      showError(result.error || 'LLM 호출 실패', () => showStep2('situation'));
       return;
     }
+
+    loadingManager.stopLoading("당신만의 이야기가 완성되었습니다.");
 
     const data = result.data;
     onComplete({

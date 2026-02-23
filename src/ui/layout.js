@@ -42,6 +42,9 @@ export function createLayout({ onTitleClick } = {}) {
     <div id="modal-root"></div>
     <div class="toast-container" id="toast-container"></div>
     <div id="global-tooltip" class="global-tooltip"></div>
+    <div class="loading-overlay">
+      <div class="loading-text"></div>
+    </div>
   `;
 
   // Elements

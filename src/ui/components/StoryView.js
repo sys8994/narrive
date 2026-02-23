@@ -369,7 +369,6 @@ function interpolateColor(color1, color2, factor) {
  * Dynamically update the background color based on tensionLevel.
  */
 function updateThemeVisuals(session, tensionLevel) {
-  console.warn('hihi', session, tensionLevel)
   if (!session || !session.themeColor) return;
 
   const initialColor = session.themeColor.initialThemeColor || '#0f111a';
@@ -380,9 +379,7 @@ function updateThemeVisuals(session, tensionLevel) {
   const factor = (validTension - 1) / 9;
 
   const currentColor = interpolateColor(initialColor, climaxColor, factor);
-  console.warn('currentColor,', currentColor)
 
-  document.body.style.transition = 'background-color 1.5s ease-in-out';
   document.body.style.backgroundColor = currentColor;
 
   // New: Update global CSS variables for universal theme sync
