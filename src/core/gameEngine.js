@@ -13,6 +13,11 @@ import { generateId } from './id.js';
 import { now } from './time.js';
 import * as tree from './treeEngine.js';
 import { callPrompt3 } from '../llm/prompts.js';
+import { HARD_ENDING_THRESHOLD } from './narrativeEngine.js';
+
+// Track in-flight prefetch promises to avoid redundant LLM calls
+// Map<"nodeId:optionId", Promise<void>>
+const inFlightPrefetches = new Map();
 
 /**
  * Create the initial gameState.
@@ -24,6 +29,10 @@ export function createInitialState() {
         inventory: [],
         flags: {},
         eventLedger: [],
+        clocks: {
+            win: 0,
+            lose: 0
+        },
         tensionLevel: 1,
         turnCount: 0,
         isEnding: false,
@@ -97,15 +106,8 @@ export async function generateInitialOptions(session) {
     const data = result.data;
     const rootNode = session.nodesById[session.rootNodeId];
 
-    const newState = {
-        location: (data.updatedState && data.updatedState.location) || session.gameState.location,
-        inventory: (data.updatedState && data.updatedState.inventory) || [...session.gameState.inventory],
-        flags: { ...session.gameState.flags, ...((data.updatedState && data.updatedState.flags) || {}) },
-        eventLedger: (data.updatedState && data.updatedState.eventLedger) || [...session.gameState.eventLedger],
-        tensionLevel: (data.updatedState && data.updatedState.tensionLevel) || session.gameState.tensionLevel || 1,
-        turnCount: 1,
-        isEnding: data.isEnding || false,
-    };
+    // Initialize state from LLM (though usually first turn just sets options)
+    const newState = applyStatePatch(session.gameState, data);
 
     const newNode = {
         id: generateId(),
@@ -168,6 +170,23 @@ export async function progressTurn(session, optionId, customText) {
         return { ok: true, reused: true, node: existingChild };
     }
 
+    // 1.1 Check if a prefetch is currently in-flight for this option
+    const prefetchKey = `${session.currentNodeId}:${optionId}`;
+    if (inFlightPrefetches.has(prefetchKey)) {
+        console.log(`[Progress] Waiting for in-flight prefetch for option "${optionId}"...`);
+        await inFlightPrefetches.get(prefetchKey);
+
+        // After waiting, the child should now exist in the tree
+        const prefetchedChild = tree.getChild(session, session.currentNodeId, optionId);
+        if (prefetchedChild) {
+            session.currentNodeId = prefetchedChild.id;
+            session.gameState = { ...prefetchedChild.stateSnapshot };
+            session.updatedAt = now();
+            prefetchedChild.visited = true;
+            return { ok: true, reused: true, node: prefetchedChild };
+        }
+    }
+
     // 2. Call LLM
     let selectedOption;
     if (optionId === '__custom__' && customText) {
@@ -181,17 +200,9 @@ export async function progressTurn(session, optionId, customText) {
 
     const data = result.data;
 
-    // Build new state
+    // Build new state using PATCH logic
     const parentState = currentNode.stateSnapshot || session.gameState;
-    const newState = {
-        location: (data.updatedState && data.updatedState.location) || parentState.location,
-        inventory: (data.updatedState && data.updatedState.inventory) || [...parentState.inventory],
-        flags: { ...parentState.flags, ...((data.updatedState && data.updatedState.flags) || {}) },
-        eventLedger: (data.updatedState && data.updatedState.eventLedger) || [...parentState.eventLedger],
-        tensionLevel: (data.updatedState && data.updatedState.tensionLevel) || parentState.tensionLevel || 1,
-        turnCount: parentState.turnCount + 1,
-        isEnding: data.isEnding || false,
-    };
+    const newState = applyStatePatch(parentState, data);
 
     // Create new node
     const newNode = {
@@ -202,6 +213,7 @@ export async function progressTurn(session, optionId, customText) {
         options: data.options || [],
         selectedOptionId: null,
         stateSnapshot: { ...newState },
+        logicalReasoning: data.logicalReasoning || '',
         isEnding: data.isEnding || false,
         meta: { title: data.nodeTitle || `Turn ${newState.turnCount}` },
         visited: true,
@@ -264,58 +276,138 @@ export async function prefetchAllOptions(session) {
     console.log(`Prefetching ${optionsToFetch.length} options for node ${currentNode.id}`);
     console.groupEnd();
 
-    // Fire LLM calls. We process them sequentially with a tiny delay to avoid hitting Gemini's strict 15 RPM / burst rate limits.
-    for (const opt of optionsToFetch) {
-        try {
-            const result = await callPrompt3(session, opt);
-            if (!result.ok) {
-                console.warn(`[Prefetch] Failed for option "${opt.text}":`, result.error);
-                continue;
+    // Fire LLM calls in parallel. 
+    const parentState = currentNode.stateSnapshot || session.gameState;
+    const nodeId = currentNode.id;
+
+    const fetchPromises = optionsToFetch.map(async (opt) => {
+        const prefetchKey = `${nodeId}:${opt.id}`;
+
+        const attemptPrefetch = async () => {
+            try {
+                const result = await callPrompt3(session, opt);
+                if (!result.ok) {
+                    console.warn(`[Prefetch] Failed for option "${opt.text}":`, result.error);
+                    return;
+                }
+
+                const data = result.data;
+                const newState = applyStatePatch(parentState, data);
+
+                const newNode = {
+                    id: generateId(),
+                    parentId: nodeId,
+                    depth: currentNode.depth + 1,
+                    text: data.text || '',
+                    options: data.options || [],
+                    selectedOptionId: null,
+                    stateSnapshot: { ...newState },
+                    logicalReasoning: data.logicalReasoning || '',
+                    isEnding: data.isEnding || false,
+                    meta: { title: data.nodeTitle || `Turn ${newState.turnCount}` },
+                    visited: false,
+                    turnSummary: data.turnSummary || '',
+                };
+
+                if (data.isEnding && data.endingType) {
+                    newNode.meta.endingType = data.endingType;
+                }
+
+                if (!tree.getChild(session, nodeId, opt.id)) {
+                    tree.addNode(session, newNode);
+                    tree.addEdge(session, nodeId, opt.id, newNode.id);
+                    console.log(`[Prefetch] ✓ Cached "${opt.text}" → node ${newNode.id}`);
+                }
+            } catch (err) {
+                console.warn(`[Prefetch] Error for option "${opt.text}":`, err);
+            } finally {
+                inFlightPrefetches.delete(prefetchKey);
             }
+        };
 
-            const data = result.data;
-            const parentState = currentNode.stateSnapshot || session.gameState;
-            const newState = {
-                location: (data.updatedState && data.updatedState.location) || parentState.location,
-                inventory: (data.updatedState && data.updatedState.inventory) || [...parentState.inventory],
-                flags: { ...parentState.flags, ...((data.updatedState && data.updatedState.flags) || {}) },
-                eventLedger: (data.updatedState && data.updatedState.eventLedger) || [...parentState.eventLedger],
-                tensionLevel: (data.updatedState && data.updatedState.tensionLevel) || parentState.tensionLevel || 1,
-                turnCount: parentState.turnCount + 1,
-                isEnding: data.isEnding || false,
-            };
+        const promise = attemptPrefetch();
+        inFlightPrefetches.set(prefetchKey, promise);
+        return promise;
+    });
 
-            const newNode = {
-                id: generateId(),
-                parentId: currentNode.id,
-                depth: currentNode.depth + 1,
-                text: data.text || '',
-                options: data.options || [],
-                selectedOptionId: null,
-                stateSnapshot: { ...newState },
-                isEnding: data.isEnding || false,
-                meta: { title: data.nodeTitle || `Turn ${newState.turnCount}` },
-                visited: false,
-                turnSummary: data.turnSummary || '',
-            };
+    await Promise.all(fetchPromises);
 
-            if (data.isEnding && data.endingType) {
-                newNode.meta.endingType = data.endingType;
-            }
-
-            // Only add if no child was created in the meantime (race safety)
-            if (!tree.getChild(session, currentNode.id, opt.id)) {
-                tree.addNode(session, newNode);
-                tree.addEdge(session, currentNode.id, opt.id, newNode.id);
-                console.log(`[Prefetch] ✓ Cached "${opt.text}" → node ${newNode.id}`);
-            }
-
-            // Artificial delay between prefetches to respect bursting limits
-            await new Promise(r => setTimeout(r, 1500));
-        } catch (err) {
-            console.warn(`[Prefetch] Error for option "${opt.text}":`, err);
-        }
-    }
 
     session.updatedAt = now();
+}
+
+/**
+ * Apply a patch from the LLM response to the current game state.
+ * Implements Rule 3 (Patch-based state update) and Rule 4 (Progress Clocks).
+ * 
+ * @param {Object} prevState 
+ * @param {Object} responseData — can include statePatch, clockDelta, turnSummary, tensionLevel, isEnding
+ * @returns {Object} new state
+ */
+export function applyStatePatch(prevState, responseData) {
+    const patch = responseData.statePatch || {};
+    const clocks = responseData.clockDelta || { track_win: 0, track_lose: 0 };
+
+    // Shallow copy initial structure
+    const newState = {
+        ...prevState,
+        inventory: [...prevState.inventory],
+        flags: { ...prevState.flags },
+        eventLedger: [...prevState.eventLedger],
+        clocks: { ...prevState.clocks }
+    };
+
+    // 1. Clocks 업데이트
+    newState.clocks.win = (newState.clocks.win || 0) + (clocks.track_win || 0);
+    newState.clocks.lose = (newState.clocks.lose || 0) + (clocks.track_lose || 0);
+
+    // 2. Flags 패치
+    if (patch.addFlags) {
+        patch.addFlags.forEach(flag => {
+            if (flag) newState.flags[flag] = true;
+        });
+    }
+    if (patch.removeFlags) {
+        patch.removeFlags.forEach(flag => {
+            delete newState.flags[flag];
+        });
+    }
+
+    // 3. Inventory 패치
+    if (patch.addItems) {
+        patch.addItems.forEach(item => {
+            if (item && !newState.inventory.includes(item)) {
+                newState.inventory.push(item);
+            }
+        });
+    }
+    if (patch.removeItems) {
+        newState.inventory = newState.inventory.filter(item => !patch.removeItems.includes(item));
+    }
+
+    // 4. Location 업데이트
+    if (patch.locationChange) {
+        newState.location = patch.locationChange;
+    }
+
+    // 5. Meta & Turn progression
+    newState.turnCount = (prevState.turnCount || 0) + 1;
+    if (responseData.turnSummary) {
+        newState.eventLedger.push(responseData.turnSummary);
+    }
+    newState.tensionLevel = responseData.tensionLevel || prevState.tensionLevel || 1;
+    newState.isEnding = responseData.isEnding || false;
+
+    // 6. Hard Ending Enforcement
+    if (newState.clocks.win >= HARD_ENDING_THRESHOLD) {
+        newState.isEnding = true;
+        // Optionally mark the type if not already set
+        if (!responseData.endingType) newState.isWinEnding = true;
+    }
+    if (newState.clocks.lose >= HARD_ENDING_THRESHOLD) {
+        newState.isEnding = true;
+        if (!responseData.endingType) newState.isLoseEnding = true;
+    }
+
+    return newState;
 }

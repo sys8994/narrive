@@ -11,6 +11,7 @@
 
 import { getPathToRoot } from '../../core/treeEngine.js';
 import { getBrandIconHtml } from './BrandIcon.js';
+import { getNarrativePhaseLabel } from '../../core/narrativeEngine.js';
 
 // ─── Configurable Timing ─────────────────────────────────────────
 const STREAM_WORD_DELAY_MS = 35;   // delay between each word appearing
@@ -106,7 +107,39 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
     // Add small subtle header
     const headerEl = document.createElement('div');
     headerEl.className = 'story-turn__header';
-    headerEl.style.cssText = 'font-size: 16px; opacity: 0.5; margin-bottom: 12px; padding-top: 12px; font-weight: 500;';
+    headerEl.style.cssText = 'font-size: 16px; opacity: 0.5; margin-bottom: 12px; padding-top: 12px; font-weight: 500; display: flex; justify-content: space-between; align-items: center;';
+
+    const headerTextContainer = document.createElement('span');
+    headerEl.appendChild(headerTextContainer);
+
+    // Debug tooltip content
+    const state = node.stateSnapshot || {};
+    const liveState = session.gameState || {};
+    const clocks = state.clocks || { win: 0, lose: 0 };
+    const liveClocks = liveState.clocks || { win: 0, lose: 0 };
+    const phaseLabel = getNarrativePhaseLabel(node.depth, clocks);
+
+    const stateText = `[Turn ${node.depth}] (${phaseLabel})
+--- NODE STATE ---
+Location: ${state.location || 'N/A'}
+Inventory: ${state.inventory?.length ? state.inventory.join(', ') : 'None'}
+Flags: ${JSON.stringify(state.flags || {})}
+Clocks: Win(${clocks.win}), Lose(${clocks.lose})
+
+--- LIVE SESSION STATE (Current) ---
+Location: ${liveState.location || 'N/A'}
+Inventory: ${liveState.inventory?.length ? liveState.inventory.join(', ') : 'None'}
+Clocks: Win(${liveClocks.win}), Lose(${liveClocks.lose})
+Tension Level: ${liveState.tensionLevel || 'N/A'}
+Flags: ${liveState.flags || 'N/A'}
+Logic: ${node.logicalReasoning || 'N/A'}`;
+
+    const debugEl = document.createElement('div');
+    debugEl.className = 'debug-state-trigger tooltip';
+    debugEl.dataset.tooltip = stateText;
+    debugEl.style.cssText = 'font-size: 11px; opacity: 0.4; cursor: help; border: 1px solid currentColor; padding: 2px 6px; border-radius: 4px;';
+    debugEl.textContent = 'debug';
+    headerEl.appendChild(debugEl);
 
     turnEl.appendChild(headerEl);
 
@@ -149,7 +182,7 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
     // --- Always attach options for all turns (past and current) ---
     if (shouldStream) {
       // For the last node with streaming: set spacer, scroll, and start sequence
-      headerEl.textContent = ''; // Clear for streaming
+      headerTextContainer.textContent = ''; // Clear for streaming
       setScrollSpacer(container);
 
       setTimeout(() => {
@@ -160,7 +193,7 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
       (async () => {
         await sleep(STREAM_START_DELAY_MS);
 
-        await streamText(headerEl, headerText, null);
+        await streamText(headerTextContainer, headerText, null);
         await sleep(STREAM_BREAK_DELAY_MS);
 
         // Scroll to bottom
@@ -177,7 +210,7 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
       })();
     } else {
       // Instant render (past turns or skipStreaming)
-      headerEl.textContent = headerText;
+      headerTextContainer.textContent = headerText;
       textEl.innerHTML = formatStoryText(node.text, session.worldSchema);
       attachOptions(container, turnEl, node, session, onOptionSelect, true);
 
