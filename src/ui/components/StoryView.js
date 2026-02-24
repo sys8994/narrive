@@ -10,6 +10,7 @@
  */
 
 import { getPathToRoot } from '../../core/treeEngine.js';
+import { getBrandIconHtml } from './BrandIcon.js';
 
 // ─── Configurable Timing ─────────────────────────────────────────
 const STREAM_WORD_DELAY_MS = 35;   // delay between each word appearing
@@ -299,7 +300,10 @@ function prepareStreaming(el) {
         const span = document.createElement('span');
         span.className = 'stream-word';
         span.style.setProperty('--stream-fade-ms', `${STREAM_FADE_MS}ms`);
-        span.textContent = word;
+        let processedWord = word;
+        processedWord = processedWord.replace(/✦/g, '<i class="fa-solid fa-sparkles"></i>');
+        processedWord = processedWord.replace(/→/g, '<i class="fa-solid fa-arrow-right"></i>');
+        span.innerHTML = processedWord; // Use innerHTML for icons
         fragment.appendChild(span);
         streamSpans.push(span);
       }
@@ -501,7 +505,7 @@ function buildFreeTextInput(optList, onOptionSelect, instant) {
 
   const freeBtn = document.createElement('button');
   freeBtn.className = 'option-freetext__btn';
-  freeBtn.textContent = '→';
+  freeBtn.innerHTML = '<i class="fa-solid fa-arrow-right"></i>';
   freeBtn.disabled = true;
 
   freeInput.addEventListener('input', () => {
@@ -612,7 +616,7 @@ export function renderStoryError(container, message, onRetry) {
 function renderWelcome(container) {
   container.innerHTML = `
     <div class="empty-state">
-      <div class="empty-state__icon">✦</div>
+      <div class="empty-state__icon">${getBrandIconHtml({ size: 64, className: 'brand-logo--hero' })}</div>
       <div class="empty-state__text" style="font-size: 20px; color: var(--text-primary);">Narrive</div>
       <div class="empty-state__hint" style="margin-top: 8px;">왼쪽에서 게임을 불러오거나 새 게임을 시작하세요</div>
     </div>

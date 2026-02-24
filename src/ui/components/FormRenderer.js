@@ -1,10 +1,4 @@
-/**
- * FormRenderer.js — Dynamic form renderer from JSON schema
- * @module ui/components/FormRenderer
- *
- * Takes a questions array from Prompt #1 output and generates DOM form elements.
- * Supports: text, textarea, select, slider, checkbox
- */
+import { renderCustomDropdown } from './CustomDropdown.js';
 
 /**
  * Render a dynamic form into a container.
@@ -32,13 +26,10 @@ export function renderForm(container, questions) {
 
         let inputEl;
         let customInputEl = null;
+        let dropdownInstance = null;
 
         switch (q.type) {
             case 'select': {
-                inputEl = document.createElement('select');
-                inputEl.className = 'select';
-                inputEl.id = `form-${q.id}`;
-
                 customInputEl = document.createElement('input');
                 customInputEl.type = 'text';
                 customInputEl.className = 'input';
@@ -46,23 +37,20 @@ export function renderForm(container, questions) {
                 customInputEl.style.marginTop = '8px';
                 customInputEl.placeholder = '직접 입력해주세요...';
 
-                (q.options || []).forEach((opt) => {
-                    const option = document.createElement('option');
-                    option.value = opt;
-                    option.textContent = opt;
-                    inputEl.appendChild(option);
-                });
-
-                inputEl.addEventListener('change', (e) => {
-                    if (e.target.value === '기타(직접 입력)') {
-                        customInputEl.style.display = 'block';
-                        customInputEl.focus();
-                    } else {
-                        customInputEl.style.display = 'none';
+                dropdownInstance = renderCustomDropdown(group, {
+                    options: q.options || [],
+                    initialValue: (q.options || [])[0],
+                    onChange: (val) => {
+                        if (val === '기타(직접 입력)') {
+                            customInputEl.style.display = 'block';
+                            customInputEl.focus();
+                        } else {
+                            customInputEl.style.display = 'none';
+                        }
                     }
                 });
 
-                group.appendChild(inputEl);
+                inputEl = dropdownInstance; // We'll handle this in getValues
                 group.appendChild(customInputEl);
                 break;
             }
@@ -137,8 +125,13 @@ export function renderForm(container, questions) {
                     values[id] = field.el.checked;
                 } else if (field.type === 'slider') {
                     values[id] = Number(field.el.value);
-                } else if (field.type === 'select' && field.el.value === '기타(직접 입력)') {
-                    values[id] = field.customInputEl.value.trim() || '기타(직접 입력)';
+                } else if (field.type === 'select') {
+                    const dropdownValue = field.el.getValue();
+                    if (dropdownValue === '기타(직접 입력)') {
+                        values[id] = field.customInputEl.value.trim() || '기타(직접 입력)';
+                    } else {
+                        values[id] = dropdownValue;
+                    }
                 } else {
                     values[id] = field.el.value;
                 }

@@ -3,6 +3,8 @@
  * @module ui/components/HomeView
  */
 
+import { getBrandIconHtml } from './BrandIcon.js';
+
 /**
  * Render the Home View into the container.
  * @param {Object} params
@@ -20,7 +22,10 @@ export function renderHomeView({ container, sessions, lastActiveId, onNewGame, o
     container.innerHTML = `
         <div class="home-view">
             <header class="home-hero">
-                <h1 class="home-hero__title">✦ Narrive</h1>
+                <h1 class="home-hero__title" style="display: flex; align-items: center; justify-content: center; gap: 16px;">
+                  ${getBrandIconHtml({ size: 64, className: 'brand-logo--hero' })}
+                  Narrive
+                </h1>
                 <p class="home-hero__slogan">Your taste. Your world. Your unknown story.</p>
                 
                 <div class="home-hero__actions">

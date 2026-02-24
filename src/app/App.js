@@ -16,6 +16,7 @@ import { renderStoryView, renderStoryError } from '../ui/components/StoryView.js
 import { renderTreeNav } from '../ui/components/TreeNav.js';
 import { renderJsonViewer } from '../ui/components/JsonViewer.js';
 import { renderHomeView } from '../ui/components/HomeView.js';
+import { getBrandIconHtml } from '../ui/components/BrandIcon.js';
 
 import * as sessionManager from '../core/sessionManager.js';
 import * as gameEngine from '../core/gameEngine.js';
@@ -237,7 +238,7 @@ function showOpeningScreen(session, prefetchPromise) {
     <div class="story-opening">${escapeHTML(session.synopsis.openingText)}</div>
     <div style="text-align: center;">
       <button class="btn btn-primary" id="btn-start-game" style="padding: 14px 40px; font-size: 16px;">
-        ✦ 모험 시작
+        ${getBrandIconHtml({ size: 18, className: 'brand-logo--inline' })}모험 시작
       </button>
     </div>
   `;

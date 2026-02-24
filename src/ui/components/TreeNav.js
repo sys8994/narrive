@@ -7,6 +7,7 @@
  */
 
 import { getPathToRoot } from '../../core/treeEngine.js';
+import { getBrandIconHtml } from './BrandIcon.js';
 
 /**
  * Render the tree navigation (linear, no indent).
@@ -75,7 +76,7 @@ function renderLinearPath(container, session, startNodeId, activePathSet, onNode
         // Step number
         const stepNum = document.createElement('span');
         stepNum.className = 'tree-node__step';
-        stepNum.textContent = node.depth === 0 ? '✦' : node.depth;
+        stepNum.innerHTML = node.depth === 0 ? getBrandIconHtml({ size: 14 }) : node.depth;
 
         // Title
         const titleEl = document.createElement('span');

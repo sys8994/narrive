@@ -4,6 +4,7 @@
  */
 
 import { formatDate } from '../../core/time.js';
+import { getBrandIconHtml } from './BrandIcon.js';
 import { getSettings, hasApiKey } from '../../llm/apiClient.js';
 
 /**
@@ -23,7 +24,7 @@ export function renderSaveList({ headerEl, bodyEl, sessions, activeSessionId, on
   headerEl.innerHTML = `
     <button class="btn btn-primary btn-block" id="btn-new-game" ${apiKeySet ? '' : 'disabled'}
             title="${apiKeySet ? '새 게임 시작' : 'API Key를 먼저 설정해주세요'}">
-      ✦ 새 게임
+      ${getBrandIconHtml({ size: 18, className: 'brand-logo--inline' })}새 게임
     </button>
   `;
 
