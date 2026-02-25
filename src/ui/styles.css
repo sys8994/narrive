@@ -178,7 +178,7 @@ body {
   bottom: 0;
   width: var(--tree-width);
   background: var(--bg-panel);
-  transition: var(--transition-theme);
+  transition: transform var(--transition), var(--transition-theme);
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -630,13 +630,21 @@ body {
 }
 
 .story-dialogue {
-  font-style: italic;
+  color: var(--accent);
   font-weight: 500;
-  display: block;
-  /* Force dialogue to be its own block */
-  margin: 12px 0;
-  color: #f8f9fa;
-  /* Crisper text for dialogue */
+  text-shadow: 0 0 8px var(--accent-glow);
+}
+
+.text-conversation {
+  font-style: italic;
+  font-family: inherit;
+  font-weight: 500;
+  margin: 16px 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+  color: var(--text-primary);
+  opacity: 0.95;
+  line-height: 1.6;
 }
 
 .highlight-pc {
@@ -902,7 +910,7 @@ body {
 
 /* --- Ending Screen --- */
 .ending-container {
-  text-align: center;
+  text-align: left;
   padding: 40px 20px;
 }
 
@@ -1490,6 +1498,7 @@ body {
   color: #c0c8d0;
   text-align: center;
   padding: 0 24px;
+  padding-bottom: 30px;
   line-height: 1.8;
   opacity: 0;
   filter: blur(8px);

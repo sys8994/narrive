@@ -12,7 +12,7 @@ import { initToast, showToast } from '../ui/components/Toast.js';
 import { openSettingsModal } from '../ui/components/SettingsModal.js';
 import { renderSaveList } from '../ui/components/SaveList.js';
 import { renderSetupWizard } from '../ui/components/SetupWizard.js';
-import { renderStoryView, renderStoryError } from '../ui/components/StoryView.js';
+import { renderStoryView, renderStoryError, updateThemeVisuals } from '../ui/components/StoryView.js';
 import { renderTreeNav } from '../ui/components/TreeNav.js';
 import { renderJsonViewer } from '../ui/components/JsonViewer.js';
 import { renderHomeView } from '../ui/components/HomeView.js';
@@ -274,6 +274,13 @@ async function handleLoadSession(sessionId) {
 
     store.setState({ appState: 'playing', activeSessionId: session.id });
     applyTheme(session);
+
+    // Sync background color to the current node's narrative phase
+    const currentNode = session.nodesById[session.currentNodeId];
+    if (currentNode) {
+        updateThemeVisuals(session, currentNode.stateSnapshot);
+    }
+
     renderCurrentNode(true); // instant — loading existing session
     await refreshSaveList();
     showToast('세션을 불러왔습니다.', 'info');
@@ -336,15 +343,27 @@ function handleTreeNodeClick(nodeId) {
     // Check if the node is already rendered in the DOM
     const turnEl = els.storyContainer.querySelector(`.story-turn[data-node-id="${nodeId}"]`);
     if (turnEl) {
+        // Sync background color FIRST for visual feedback
+        const targetNode = session.nodesById[nodeId];
+        if (targetNode) {
+            updateThemeVisuals(session, targetNode.stateSnapshot);
+        }
         // Just scroll there
         turnEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
     }
 
+    // Rollback game state computationally
     const result = gameEngine.rollbackToNode(session, nodeId);
     if (!result.ok) {
         showToast('해당 노드로 이동할 수 없습니다.', 'error');
         return;
+    }
+
+    // Sync background color to match the target node's narrative phase
+    const targetNode = session.nodesById[nodeId];
+    if (targetNode) {
+        updateThemeVisuals(session, targetNode.stateSnapshot);
     }
 
     sessionManager.scheduleSave();

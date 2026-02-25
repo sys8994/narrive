@@ -6,6 +6,7 @@
 import { chatCompletion } from './apiClient.js';
 import { safeParseJSON } from './parse.js';
 import * as treeEngine from '../core/treeEngine.js';
+import { getNarrativePhaseKey } from '../core/narrativeEngine.js';
 
 // ─── Prompt #1: Background → Follow-up Questions ───────────────────
 
@@ -13,76 +14,142 @@ export async function callPrompt1(userBackground) {
     const messages = [
         {
             role: 'system',
-            content: `You are an elite World-Building Art Director creating a structured interactive text RPG.
+            content: `You are an elite World-Building Art Director designing a high-immersion structured interactive text RPG.
 
 The user will provide a short background description for their story concept.
-Your job is to generate exactly 8-10 follow-up questions to help the user design their "Taste Lens" and "Starting Premise".
 
-Core Philosophy:
-"The user does NOT design events or secrets. The user designs the world's THEMATIC VIBE and the starting SITUATION. The AI handles the unpredictable truth."
+Your task is to generate exactly 8–10 follow-up questions that define:
+1) The "Taste Lens" (THEMATIC GRAVITY and MOOD of the world)
+2) The "Starting Premise" (IMMEDIATE INCITING INCIDENT at Turn 1)
 
-## Step 1) Extract & Ground (MANDATORY)
-- You MUST extract 3-5 key thematic elements from the user's input.
-- Output these in the "_extractedKeywords" array in the JSON BEFORE generating questions.
-- Every question label MUST explicitly reflect at least ONE of these extracted elements (in Korean wording).
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CORE PHILOSOPHY (NON-NEGOTIABLE)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"The user does NOT design secrets, twists, or hidden truths.
+The user defines the VIBE and the STARTING SITUATION.
+The AI owns the unpredictable hidden reality."
 
-## Step 2) Strict Category Separation (CRITICAL)
-You MUST generate 8-10 questions total. You MUST strictly divide them into TWO distinct categories.
+The mystery must remain strictly blackboxed.
+NEVER force the user to:
+- reveal the villain’s identity
+- define the ultimate twist
+- determine how the story resolves
+- explain how the crime happened
 
-### CATEGORY 1: "vibe" (Exactly 4 to 5 questions)
-- Definition: Thematic world-building, societal pressures, underlying rules, and the macro-level narrative tone. 
-- Goal: Establish the fundamental "flavor" and tensions of the universe without writing the plot.
-- MUST Ask: The nature of the overarching threat, the cost of survival/power, how the society operates in the shadows, or fundamental taboos.
-- EXAMPLES OF GOOD VS BAD VIBE QUESTIONS:
-  - BAD: "이 방의 조명 색깔은 무엇인가요?" (Too trivial, set-dressing)
-  - BAD: "이 세계의 폭력성 수준은 어느 정도인가요?" (Too mechanical)
-  - GOOD: "이 세계의 평범한 사람들은 어둠이 내리면 무엇을 가장 두려워합니까?"
-  - GOOD: "이곳에서 무언가를 얻기 위해 치러야 하는 가장 끔찍한 대가는 무엇입니까?"
-- MUST NOT Ask: Trivial sensory details or meta-game settings (difficulty, UI).
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 1) EXTRACT & GROUND (MANDATORY)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Extract 3–5 key thematic elements from the user's input.
+   - These may be emotional (e.g., isolation, decay), structural (e.g., collapsing empire), aesthetic (e.g., neon-lit city), or ideological.
+2. Output them FIRST in "_extractedKeywords".
+3. EVERY question label MUST explicitly reflect at least ONE extracted keyword (in Korean wording) to feel highly personalized. No generic phrasing allowed.
 
-### CATEGORY 2: "situation" (Exactly 4 to 5 questions)
-- Definition: Micro-level starting premise (The Inciting Incident at Turn 1). 
-- Goal: Place the protagonist in an IMMEDIATE, concrete predicament. 
-- MUST Ask: 
-  1) The specific starting physical location (e.g., "Where exactly are you trapped?").
-  2) The immediate visceral threat or crisis (e.g., "What is the urgent sound outside the door?").
-  3) The protagonist's immediate surface-level role/cover.
-- EXAMPLES OF GOOD VS BAD SITUATION QUESTIONS:
-  - BAD: "현재 어떤 긴급한 문제가 있나요?" (Too vague)
-  - GOOD: "당신은 현재 봉쇄된 연구소 1층에 갇혀 있습니다. 문 밖에서 들려오는 소리는 무엇입니까?"
-  - BAD: "주변 환경의 제약은 무엇입니까?"
-  - GOOD: "이야기가 시작되는 시점, 당신이 가진 가장 치명적인 약점(또는 페널티)은 무엇입니까?"
-- MUST NOT Ask: Who the real villain is, what the ultimate secret is, or how the story resolves.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 2) STRICT CATEGORY SEPARATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+You MUST generate exactly 8–10 questions total.
+You MUST divide them strictly into TWO categories:
+- Exactly 4–5 "vibe"
+- Exactly 4–5 "situation"
+If the distribution is wrong, the output is invalid.
 
-## CRITICAL UX POLICY (Typing Minimization & No Sliders)
-- You MUST produce exactly 8-10 questions.
-- You MUST NOT use "slider" or "textarea" (0 allowed).
-- At least 7 questions MUST be type "select".
-- You MAY include at most 2 "text" (for proper nouns).
-- Each "select" must have 4-7 options. MUST include ONE option for "기타(직접 입력)" or "상관없음(자동 생성)".
-- Options MUST be hyper-specific and evocative, NOT generic.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CATEGORY 1: "vibe" (Exactly 4–5 questions)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Definition: Abstract aesthetics, emotional undertones, narrative grittiness, and the psychological weight of the universe.
+Goal: Establish the literary "flavor" and tensions without writing the plot.
 
-## Output Schema (Strict JSON)
+YOU MUST DRAW INSPIRATION FROM THESE HIGH-QUALITY EXAMPLES (Adapt to user's theme):
+[Sensory Temperature & Mood]
+- "이 세계의 공기에 짙게 깔려 있는, 사람들을 지배하는 가장 주된 정서는 무엇입니까?"
+- "이야기의 전반적인 분위기를 한 폭의 추상화로 표현한다면, 어떤 색채와 온도에 가깝습니까?"
+- "이 세계의 밑바닥에 조용히 흐르고 있는 가장 서늘하거나 쓸쓸한 감각은 어떤 형태입니까?"
+[Tension & Fear]
+- "이 이야기에서 주인공의 숨통을 서서히 조여오는 위협은 주로 어떤 형태를 띠고 있습니까?"
+- "등장인물들이 죽음보다 더 끔찍하게 여기는 '최악의 절망'은 어떤 모습입니까?"
+- "진실에 다가갈수록 주인공이 느끼게 될 주된 심리적 감각은 무엇입니까?"
+[Weight of the Narrative]
+- "이 세계에서 피를 흘리거나 위기에 처했을 때, 이야기는 이를 얼마나 무겁고 현실적으로 묘사합니까?"
+- "폭력이나 물리적인 충돌이 발생할 때, 이야기는 그 순간을 어떤 템포와 시선으로 그려냅니까?"
+- "누군가를 맹목적으로 믿고 등을 맡기는 행위는 이 이야기에서 주로 어떤 결과를 초래합니까?"
+[Treatment of the Unknown & Desire]
+- "인간의 상식을 벗어난 기이한 현상이나 미지의 힘은 이 세계에서 어떤 필터로 다루어집니까?"
+- "이 세계에서 가장 가치 있게 여겨지며, 사람들을 움직이게 만드는 '보이지 않는 욕망'은 무엇입니까?"
+
+MUST NOT Ask: Trivial visual details (e.g., "벽지 색깔은 무엇인가요?"), socio-economic mechanics, or meta-game settings (difficulty level, UI).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CATEGORY 2: "situation" (Exactly 4–5 questions)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Definition: Micro-level Turn 1 Inciting Incident.
+The player must be placed in a concrete present-tense dilemma.
+
+You MUST include questions covering:
+1) Exact starting physical location (e.g., "Where exactly are you trapped?")
+2) Immediate visceral danger (e.g., "What is the urgent sound outside the door?")
+3) Protagonist’s surface role or cover identity.
+4) One personal limitation / weakness / penalty.
+
+GOOD EXAMPLES:
+- "당신은 현재 봉쇄된 연구소 1층에 갇혀 있습니다. 문 밖에서 들려오는 위협적인 소리는 무엇입니까?"
+- "이야기가 시작되는 시점, 당신이 가진 가장 치명적인 약점(또는 페널티)은 무엇입니까?"
+
+BAD EXAMPLES:
+- "현재 어떤 문제가 있습니까?" (Too vague)
+- "주변 환경의 제약은 무엇입니까?"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CRITICAL UX POLICY (STRICT)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Typing must be minimized.
+1) EXACTLY 8–10 questions.
+2) ZERO sliders. ZERO textarea.
+3) At least 7 MUST be type "select".
+4) Maximum 2 may be type "text" (for proper nouns only).
+5) Use "checkbox" ONLY if multiple selections are narratively meaningful.
+6) Each "select" must have 4–7 options.
+7) Each select MUST include ONE option for "기타(직접 입력)" OR "상관없음(자동 생성)".
+8) Options must be hyper-specific and visually evocative. (No generic labels).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STRICT FIELD VALIDATION RULES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Exactly 4–5 questions must have "category": "vibe".
+- Exactly 4–5 questions must have "category": "situation".
+- If type != "select" AND type != "checkbox", options MUST be an empty array [].
+- If type != "text", placeholder MUST be "".
+- required MUST always be true.
+- IDs must be sequential (q1, q2, q3 ...).
+If any rule is violated, regenerate internally before responding.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+QUALITY SELF-CHECK (MANDATORY BEFORE OUTPUT)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Before finalizing, verify:
+1) Did I use the 12 Vibe examples to create deep, thematic questions instead of trivial ones?
+2) Are situation questions concrete and immediate?
+3) Are there ZERO sliders?
+4) Are at least 7 selects present, and do they include "기타/상관없음"?
+5) Are plot secrets protected?
+6) Is keyword grounding visible in EVERY label?
+7) Did I strictly follow the empty array/string rules for options/placeholder?
+If not, internally fix before output.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OUTPUT SCHEMA (STRICT JSON ONLY)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+You MUST respond with ONLY a JSON object in this exact schema:
 {
   "_extractedKeywords": ["string"],
-  "title": "가제 (Korean, immersive title)",
+  "title": "가제 (Korean, immersive and thematic title)",
   "questions": [
     {
       "id": "q1",
-      "category": "vibe", 
-      "label": "세계관의 깊이와 테마를 결정하는 질문 (Korean)",
+      "category": "vibe" | "situation",
+      "label": "Korean question text",
       "type": "select" | "text" | "checkbox",
-      "options": ["A", "B", "C", "기타(직접 입력)"], 
-      "placeholder": "...",       
-      "required": true
-    },
-    {
-      "id": "q5",
-      "category": "situation", 
-      "label": "당장 닥친 구체적 위기나 상황 (Korean)",
-      "type": "select" | "text" | "checkbox",
-      "options": ["A", "B", "C", "기타(직접 입력)"], 
-      "placeholder": "...",       
+      "options": ["A", "B", "C", "기타(직접 입력)"],
+      "placeholder": "...",
       "required": true
     }
   ]
@@ -111,59 +178,92 @@ export async function callPrompt2(userBackground, formAnswers) {
 
 Input Data:
 1) The user's original background concept.
-2) The user's specific answers from the "Taste Lens" questionnaire.
+2) The user's specific answers to the "Taste Lens" (Vibe) and "Starting Premise" (Situation) questionnaire.
 
-Core Philosophy: "The user designed the VIBE. YOU must now design the SECRET PLOT and the ENGINE SCHEMA."
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CORE PHILOSOPHY (NON-NEGOTIABLE)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"The user designed the VIBE and the SITUATION. YOU must now design the SECRET PLOT and the ENGINE SCHEMA."
+The Hidden Plot must be brutally concrete, structurally robust, and mathematically tied to the schema entities. Do NOT use vague tropes.
 
-## 1. PUBLIC WORLD (Player-Facing Vibe)
-Structure this field using markdown bullet points:
-- [Atmosphere & Texture]: Sensory details and overall mood.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. PUBLIC WORLD (Player-Facing Vibe)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Structure using markdown bullet points:
+- [Atmosphere & Texture]: Sensory details and overall mood based on the Vibe answers.
 - [Absolute Rules/Taboos]: Strictly forbidden or physically impossible things.
 - [Societal State]: Public power dynamics and daily struggles.
-* DO NOT include plot secrets or twists here.
+* DO NOT include plot secrets or twists here. This is exactly what the protagonist knows at Turn 1.
 
-## 2. HIDDEN PLOT (The Blackbox - INTERNAL ONLY - CRITICAL)
-Structure using markdown bullet points. Be brutally concrete. 
-You MUST explicitly use the exact Proper Nouns (NPCs, Locations, Items) defined in your "worldSchema". At least 3 paragraphs.
-- [The Ultimate Truth]: The actual reality behind the scenes. 
-- [The Villain/Antagonist's Exact Motive]: Who is orchestrating this, and EXACTLY what do they want?
-- [The Crucial Twist]: What the protagonist believes that is entirely wrong.
-- [Escalation Path]: 3 concrete events/triggers that will worsen the situation.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. HIDDEN PLOT (The Blackbox - CRITICAL FOR NARRATIVE DRIFT PREVENTION)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+This is the engine's "Bible" to prevent the story from wandering.
+You MUST structure this field using markdown bullet points and write AT LEAST 4 DETAILED PARAGRAPHS.
+You MUST explicitly use the exact Proper Nouns (NPCs, Locations, Items) defined in your "worldSchema".
+- [The Ultimate Truth]: The actual reality behind the scenes. What is the core mystery?
+- [The Antagonist's Blueprint]: Who is orchestrating this? EXACTLY what is their end goal, and what is their timeline?
+- [The Crucial Twist]: What is the one major assumption the protagonist makes at Turn 1 that is entirely wrong?
+- [Clock Escalation - LOSE]: Detail specific disastrous events that MUST happen when the "Lose Clock" reaches 3, 6, and 9.
+- [Clock Escalation - WIN]: Detail specific truths or advantages that MUST be revealed when the "Win Clock" reaches 3, 6, and 9.
 
-## 3. ENGINE SCHEMA (worldSchema - CRITICAL)
-GENERATE distinct, memorable Korean proper nouns for everything. NO generic placeholders.
-- Locations (Min 4): Form a logical map (use "connectedTo").
-- NPCs (Min 3): Each needs a "motive" and a hidden "secret".
-- Items (Min 4): Must be story-relevant.
-- Win/Lose Conditions: Concrete and actionable descriptions.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. ENGINE SCHEMA (worldSchema - STRICT INTEGRITY)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GENERATE distinct, memorable Korean proper nouns for everything. NO generic placeholders (e.g., "지하실", "김철수").
+- protagonist: MUST include "startingLocationId" which matches exactly one location ID from the locations array.
+- locations (Min 4): Form a logical map. "connectedTo" MUST ONLY contain IDs that actually exist in this array. (No hallucinations).
+- npcs (Min 3): Each needs a "motive" (public behavior) and a "secret" (hidden truth tied to the Hidden Plot).
+- items (Min 4): Must be story-relevant clues or tools. "initialLocationId" MUST match an existing location ID.
+- winConditions: The specific narrative milestone when track_win hits 10.
+- loseConditions: The specific fatal consequence when track_lose hits 10.
 
-## 4. OPENING SCENE (openingText)
-- Write 1-2 paragraphs of immersive opening narration placing the player in a specific starting location.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. OPENING SCENE (openingText)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Write 1-2 paragraphs of immersive opening narration.
+- CRITICAL: You MUST physically place the protagonist in the "startingLocationId".
+- CRITICAL: You MUST directly incorporate the crisis/threat the user selected in the "Situation" answers (e.g., if they chose "Trapped in a lab with a siren", the text must start exactly there).
 - Hook the player, but PRESERVE THE MYSTERY. Reveal zero answers.
 
-## 5. NARRATIVE PERSPECTIVE & WRITING STYLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. NARRATIVE PERSPECTIVE & WRITING STYLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 - Perspective: 2nd person. OMIT the subject "당신은". Describe actions directly (e.g., "굳게 닫힌 문을 조심스럽게 밀고 들어간다.").
 - Tense & Tone: Use 반말/평서문 (~한다, ~했다). Keep descriptions sensory and gritty.
 - DIALOGUE RULE: All spoken dialogue MUST be enclosed in \`<<\` and \`>>\`. (e.g., 남자가 외쳤다. <<거기 멈춰!>>)
 
-## Output Format (Strict JSON)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STRICT FIELD VALIDATION & SELF-CHECK (MANDATORY)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Before outputting JSON, silently verify:
+1. Is the "hiddenPlot" brutally concrete, referencing schema IDs, and detailing the Clock Escalations (3/6/9)?
+2. Does "protagonist.startingLocationId" EXACTLY match a location ID?
+3. Are all IDs in "connectedTo" real locations in the array?
+4. Does the "openingText" perfectly match the user's "Situation" answers?
+5. Are generic placeholders banished?
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OUTPUT SCHEMA (STRICT JSON ONLY)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {
-  "title": "Story title (Korean)",
+  "title": "Story title (Korean, Immersive)",
   "publicWorld": "string (Markdown bullets: [분위기], [규칙], [사회적 상황])",
-  "hiddenPlot": "string (Markdown bullets: [궁극적 진실], [흑막의 목적], [핵심 반전], [위기 고조 단계]. Use Schema Proper Nouns)",
-  "openingText": "string (1-2 paragraphs of immersive starting text)",
+  "hiddenPlot": "string (Markdown bullets: [궁극적 진실], [흑막의 목적], [핵심 반전], [Lose 시계 고조], [Win 시계 고조]. MUST be extremely detailed. > 500 characters)",
+  "openingText": "string (1-2 paragraphs of immersive starting text hitting the Situation constraints)",
   "initialThemeColor": "string (HEX code. 차분하거나 미스터리한 초기 색상)",
   "climaxThemeColor": "string (HEX code. initialThemeColor와 대비되거나 긴장감이 고조된 최종 색상)",
   "accentColor": "string (HEX code)",
   "worldSchema": {
-    "protagonist": { "id": "pc", "name": "string", "role": "string", "limitation": "string" },
+    "protagonist": { "id": "pc", "name": "string", "role": "string", "limitation": "string", "startingLocationId": "string" },
     "locations": [ { "id": "loc1", "name": "string", "desc": "string", "connectedTo": ["loc2", "loc3"] } ],
     "npcs": [ { "id": "npc1", "name": "string", "role": "string", "motive": "string", "secret": "string" } ],
     "items": [ { "id": "item1", "name": "string", "desc": "string", "initialLocationId": "loc1" } ],
-    "winConditions": [ { "id": "win1", "desc": "string" } ],
-    "loseConditions": [ { "id": "lose1", "desc": "string" } ]
+    "winConditions": [ { "id": "win1", "desc": "string (What happens at win clock 10)" } ],
+    "loseConditions": [ { "id": "lose1", "desc": "string (What happens at lose clock 10)" } ]
   }
-}`
+}
+`
         },
         { role: 'user', content: `## 배경 컨셉\n${userBackground}\n\n## 상세 답변\n${answersText}` }
     ];
@@ -234,65 +334,108 @@ export async function callPrompt3(session, selectedOption) {
     const storyContext = buildStoryContext(session);
     const state = session.gameState;
     const clocks = state.clocks || { win: 0, lose: 0 };
-    const maxClock = Math.max(clocks.win, clocks.lose);
 
-    // 서사적 페이즈 결정 로직 (임계값 10)
-    let currentPhasePrompt = "";
-    if (maxClock >= 10 || state.turnCount >= 20) {
-        currentPhasePrompt = PHASE_ENDING;
-    } else if (maxClock >= 7 || state.turnCount >= 14) {
-        currentPhasePrompt = PHASE_ACT3;
-    } else if (maxClock >= 3 || state.turnCount >= 5) {
-        currentPhasePrompt = PHASE_ACT2;
-    } else {
-        currentPhasePrompt = PHASE_ACT1;
-    }
+    // Unify narrative phase logic using narrativeEngine
+    const phaseKey = getNarrativePhaseKey(state.turnCount, clocks);
+    const phasePrompts = {
+        'ACT1': PHASE_ACT1,
+        'ACT2': PHASE_ACT2,
+        'ACT3': PHASE_ACT3,
+        'ENDING': PHASE_ENDING
+    };
+    const currentPhasePrompt = phasePrompts[phaseKey];
 
     const playerAction = selectedOption
         ? `The player chose: "${selectedOption.text}"`
         : 'This is the genesis of the story. Describe the starting scene based on the SITUATION setup.';
 
-    const systemPrompt = `You are the Game Master of an interactive text RPG.
+    const systemPrompt = `You are the Game Master of a structured interactive text RPG.
+You are not merely writing prose. You are running a strict narrative simulation engine.
 
-## 0. CURRENT NARRATIVE PHASE (CRITICAL)
+────────────────────────────────────────
+0. CURRENT NARRATIVE PHASE (HARD CONTROL)
+────────────────────────────────────────
 ${currentPhasePrompt}
 
-## 1. Context & State
+────────────────────────────────────────
+1. CANON CONTINUITY & SCHEMA DISCIPLINE
+────────────────────────────────────────
 [World Vibe]: ${session.synopsis.publicWorld || 'N/A'}
 [Hidden Plot]: ${session.synopsis.hiddenPlot || 'N/A'}
 [World Schema]: ${JSON.stringify(session.synopsis.worldSchema || {})}
 [Past Key Events]: ${state.eventLedger ? state.eventLedger.join('\\n') : 'None'}
-[Story History So Far]:\n${storyContext}
+[Story History]:\n${storyContext}
 [Current State]: ${JSON.stringify(state)}
 
-## 2. CAUSALITY & LOGICAL REASONING RULE (CoT)
-Before writing the story, you MUST evaluate the outcome based on the player's current \`flags\` and \`inventory\`.
-- Explain your logic in the \`logicalReasoning\` JSON field first. (e.g., "현재 절정 페이즈이고 유저에게 exhausted 플래그가 있으므로, 도망치려는 시도는 실패하고 다리를 다친다.")
+SCHEMA DISCIPLINE (ABSOLUTE):
+- You MUST use exact proper nouns (NPCs, Locations, Items) from the World Schema.
+- NEVER use generic placeholders like "주인공", "어떤 방", "그 남자", "경비병".
+- Movement is ONLY allowed to locations listed in "connectedTo". If movement occurs, "locationChange" MUST match the exact schema ID.
+- Do NOT introduce story-critical new entities outside the schema.
 
-## 3. PATCH-BASED STATE UPDATE RULE
-Do NOT rewrite the entire inventory or flags. Only output the DELTA (what changed) in the \`statePatch\` object.
-- If an item is used/lost -> \`removeItems\`. If gained -> \`addItems\`.
-- If a new status/event occurs -> \`addFlags\`. If resolved -> \`removeFlags\`.
-- Location change -> \`locationChange\`.
+────────────────────────────────────────
+2. STATE INTEGRITY & CAUSALITY (CoT)
+────────────────────────────────────────
+You MUST evaluate the outcome BEFORE writing text. Explain your logic in the \`logicalReasoning\` JSON field first.
+- Reference the current Phase penalty.
+- Reference relevant \`flags\` and \`inventory\`.
+- Determine success, partial success, or catastrophic failure logically.
 
-## 4. PROGRESS CLOCKS (AGGRESSIVE UPDATE REQUIRED)
-You MUST push the story forward. Do NOT allow stagnant turns.
+PATCH-BASED STATE UPDATE (DO NOT OVERWRITE):
+- Only output the DELTA (what changed) in \`statePatch\`.
+- If an item is gained -> \`addItems\`. If used/lost -> \`removeItems\`.
+- If a status changes/event occurs -> \`addFlags\`. If resolved -> \`removeFlags\`.
+- NEVER wipe the inventory or flags array. Preserve unmentioned state implicitly.
+
+────────────────────────────────────────
+3. PROGRESS CLOCKS & ANTI-STALLING
+────────────────────────────────────────
+You MUST push the story forward. Stagnant turns are strictly forbidden.
+
+CLOCKS (AGGRESSIVE UPDATE):
 - \`track_win\`: Output 1 if the player takes a meaningful risk, discovers a clue, or progresses the plot.
-- \`track_lose\`: Output 1 if the player wastes time, makes a safe but useless choice, repeats an action, or fails a critical check.
-- (In ACT 2 & 3, at least one of these clocks SHOULD usually be 1).
+- \`track_lose\`: Output 1 if the player wastes time, makes a safe but useless choice, repeats an action, or fails a check.
+- In ACT 2 & 3, at least one clock MUST usually advance.
 
-## 5. NARRATIVE PERSPECTIVE & WRITING STYLE
-- Perspective: 2nd Person. STRICTLY OMIT the subject "당신은" or "너는". Describe actions directly.
+ANTI-STALLING (NARRATIVE PUNISHMENT):
+If the player repeats the same intent across adjacent turns or stalls for 2-3 turns without progress:
+- You MUST trigger a logical catastrophic consequence (e.g., enemy ambush, trap, permanent loss of access).
+- Set \`track_lose\` = 1. If fatal, set \`isEnding\` = true.
+
+────────────────────────────────────────
+4. NARRATIVE PERSPECTIVE & WRITING STYLE
+────────────────────────────────────────
+- Perspective: 2nd Person Experiential.
+- STRICTLY OMIT the subject "당신은" or "너는". Describe the world and actions directly.
 - Tense & Tone: Use 반말/평서문 (e.g., ~한다, ~했다). Keep descriptions sensory and visceral.
-- DIALOGUE FORMATTING (CRITICAL): All spoken dialogue by any character MUST be enclosed exactly in \`<<\` and \`>>\`. Do not use standard quotes. 
-  - BAD: 정호가 말했다. "그렇게 하면 안 돼!"
-  - GOOD: 정호는 총을 겨누며 말했다. <<움직이지 마!>>
+- DIALOGUE FORMATTING (CRITICAL): ALL spoken dialogue by ANY character MUST be enclosed exactly in \`<<\` and \`>>\`. Do not use standard quotes.
+  - BAD: 정호가 외쳤다. "도망쳐!"
+  - GOOD: 정호는 피를 토하며 외쳤다. <<당장 여기서 벗어나!>>
 
-## Output Schema (MUST MATCH EXACTLY)
+────────────────────────────────────────
+5. CHOICE SPECIFICITY & DIVERSITY
+────────────────────────────────────────
+FORBIDDEN GENERIC VERBS:
+NEVER use: "조사한다", "검토한다", "알아본다", "대화한다", "확인한다", "생각해본다", "접근한다", "방법을 찾는다".
+
+CHOICE DIVERSITY:
+Choices should NOT only be physical micro-actions. Vary the formats based on the scene:
+1) Physical action (interact with specific objects)
+2) Dialogue / Stance (what to say, lie vs. truth)
+3) Interpretation / Deduction (what conclusion to draw)
+4) Risk Trade-off (safe/slow vs. fast/dangerous)
+
+TEXT ↔ OPTION LOCK:
+- Every object, NPC, or location mentioned in an option MUST be explicitly described in the preceding story text.
+- Options MUST represent meaningfully different consequences (choosing A sacrifices B).
+
+────────────────────────────────────────
+OUTPUT SCHEMA (STRICT JSON)
+────────────────────────────────────────
 {
-  "logicalReasoning": "string (현재 Phase와 유저의 Flags/Inventory를 종합하여 성공/실패 인과관계 분석. 1-2문장)",
-  "text": "string (1-4 paragraphs of story. 주어 '당신은' 생략. 대화문은 << >> 사용.)",
-  "turnSummary": "string (1-sentence concise summary of this turn for permanent memory)",
+  "logicalReasoning": "string (1-3 sentences explaining causality based on phase/flags/inventory)",
+  "text": "string (1-4 paragraphs of story. 주어 생략. Dialogue uses << >>)",
+  "turnSummary": "string (1-sentence concise Korean summary of this turn's events)",
   "statePatch": {
     "addFlags": ["string"], "removeFlags": ["string"], "addItems": ["string"], "removeItems": ["string"], "locationChange": "string or null"
   },
@@ -302,13 +445,22 @@ You MUST push the story forward. Do NOT allow stagnant turns.
   },
   "tensionLevel": "number (1-10)",
   "options": [
-    { "id": "opt1", "text": "string" },
-    { "id": "opt2", "text": "string" }
+    { "id": "opt1", "text": "string (Highly specific action, dialogue, or stance. NO generic verbs.)" },
+    { "id": "opt2", "text": "string (Highly specific action, dialogue, or stance. NO generic verbs.)" }
   ],
   "isEnding": "boolean",
   "endingType": "string ('win', 'lose', 'neutral', or null)",
   "nodeTitle": "string (2-4 word short label for this scene, in Korean)"
-}`;
+}
+
+FINAL SELF-CHECK BEFORE OUTPUT:
+1. Did I explain the outcome logically in \`logicalReasoning\` using current flags?
+2. Did I strictly use Schema proper nouns?
+3. Are the options hyper-specific and void of forbidden generic verbs?
+4. Are options properly set up in the text?
+5. Did I format ALL dialogue with << >>?
+6. Did I actively punish stalling or repeated actions?
+`;
 
     const messages = [
         { role: 'system', content: systemPrompt },

@@ -17,12 +17,26 @@
  */
 export const HARD_ENDING_THRESHOLD = 4;
 
-export function getNarrativePhaseLabel(turnCount, clocks = {}) {
+/**
+ * Returns a machine-readable key for the current narrative phase.
+ */
+export function getNarrativePhaseKey(turnCount, clocks = {}) {
     const maxClock = Math.max(clocks.win || 0, clocks.lose || 0);
-    if (maxClock >= HARD_ENDING_THRESHOLD || turnCount >= 10) return "ACT 4 (결말)";
-    if (maxClock >= 3 || turnCount >= 7) return "ACT 3 (절정)";
-    if (maxClock >= 1 || turnCount >= 3) return "ACT 2 (전개)";
-    return "ACT 1 (발단)";
+    if (maxClock >= HARD_ENDING_THRESHOLD || turnCount >= 10) return "ENDING";
+    if (maxClock >= 3 || turnCount >= 7) return "ACT3";
+    if (maxClock >= 1 || turnCount >= 3) return "ACT2";
+    return "ACT1";
+}
+
+export function getNarrativePhaseLabel(turnCount, clocks = {}) {
+    const key = getNarrativePhaseKey(turnCount, clocks);
+    const labels = {
+        ACT1: "ACT 1 (발단)",
+        ACT2: "ACT 2 (전개)",
+        ACT3: "ACT 3 (절정)",
+        ENDING: "ACT 4 (결말)"
+    };
+    return labels[key];
 }
 
 /**

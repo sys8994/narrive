@@ -11,7 +11,7 @@
 
 import { getPathToRoot } from '../../core/treeEngine.js';
 import { getBrandIconHtml } from './BrandIcon.js';
-import { getNarrativePhaseLabel } from '../../core/narrativeEngine.js';
+import { getNarrativePhaseLabel, getNarrativePhaseKey } from '../../core/narrativeEngine.js';
 
 // ─── Configurable Timing ─────────────────────────────────────────
 const STREAM_WORD_DELAY_MS = 35;   // delay between each word appearing
@@ -40,6 +40,9 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
     container.innerHTML = '<div class="empty-state"><div class="empty-state__text">노드를 찾을 수 없습니다.</div></div>';
     return;
   }
+
+  const currentNode = session.nodesById[session.currentNodeId];
+  // Removed top-level updateThemeVisuals here to let the loop handle it precisely
 
   // 0. Clean up empty states or welcoming screens dynamically
   Array.from(container.children).forEach(child => {
@@ -102,7 +105,7 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
     const turnEl = document.createElement('div');
     turnEl.className = 'story-turn';
     turnEl.dataset.nodeId = nodeId;
-    turnEl.style.cssText = 'margin-bottom: 48px;';
+    turnEl.style.cssText = 'margin-bottom: 32px;';
 
     // Add small subtle header
     const headerEl = document.createElement('div');
@@ -119,20 +122,7 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
     const liveClocks = liveState.clocks || { win: 0, lose: 0 };
     const phaseLabel = getNarrativePhaseLabel(node.depth, clocks);
 
-    const stateText = `[Turn ${node.depth}] (${phaseLabel})
---- NODE STATE ---
-Location: ${state.location || 'N/A'}
-Inventory: ${state.inventory?.length ? state.inventory.join(', ') : 'None'}
-Flags: ${JSON.stringify(state.flags || {})}
-Clocks: Win(${clocks.win}), Lose(${clocks.lose})
-
---- LIVE SESSION STATE (Current) ---
-Location: ${liveState.location || 'N/A'}
-Inventory: ${liveState.inventory?.length ? liveState.inventory.join(', ') : 'None'}
-Clocks: Win(${liveClocks.win}), Lose(${liveClocks.lose})
-Tension Level: ${liveState.tensionLevel || 'N/A'}
-Flags: ${liveState.flags || 'N/A'}
-Logic: ${node.logicalReasoning || 'N/A'}`;
+    const stateText = `[Turn ${node.depth}] (${phaseLabel})\n--- NODE STATE ---\nLocation: ${state.location || 'N/A'}\nClocks: Win(${clocks.win}), Lose(${clocks.lose})\n--- LIVE STATE ---\nLocation: ${liveState.location || 'N/A'}\nClocks: Win(${liveClocks.win}), Lose(${liveClocks.lose})\nLogic: ${node.logicalReasoning || 'N/A'}`;
 
     const debugEl = document.createElement('div');
     debugEl.className = 'debug-state-trigger tooltip';
@@ -141,88 +131,83 @@ Logic: ${node.logicalReasoning || 'N/A'}`;
     debugEl.textContent = 'debug';
     headerEl.appendChild(debugEl);
 
-    turnEl.appendChild(headerEl);
-
-    // If it's an ending
-    if (node.isEnding) {
-      container.appendChild(turnEl);
-      renderEnding(turnEl, node, skipStreaming);
-      continue;
+    // Standard turn setup
+    if (!node.isEnding) {
+      turnEl.appendChild(headerEl);
+      const textEl = document.createElement('div');
+      textEl.className = 'story-text';
+      turnEl.appendChild(textEl);
     }
 
-    // Story text
-    const textEl = document.createElement('div');
-    textEl.className = 'story-text';
-    turnEl.appendChild(textEl);
-
-    container.appendChild(turnEl);
-
-    const turnLabel = node.depth === 0 ? 'Intro' : `Page #${node.depth}`;
-    const title = node.meta?.title || '진행';
-
-    let showLocation = false;
-    if (i === 0) {
-      showLocation = true;
+    // IMPORTANT: Append turn BEFORE spacer if spacer exists
+    const spacer = container.querySelector('.scroll-spacer');
+    if (spacer) {
+      container.insertBefore(turnEl, spacer);
     } else {
-      const prevNodeId = activePath[i - 1];
-      const prevNode = session.nodesById[prevNodeId];
-      const prevLoc = prevNode?.stateSnapshot?.location;
-      const currLoc = node.stateSnapshot?.location;
-      if (currLoc && currLoc !== prevLoc) {
-        showLocation = true;
-      }
+      container.appendChild(turnEl);
     }
-    const locationStr = (showLocation && node.stateSnapshot?.location) ? ` @ ${node.stateSnapshot.location}` : '';
+
+    if (node.isEnding) {
+      turnEl.style.marginBottom = '0px';
+      // We'll call renderEnding later in the flow
+    }
 
     const isLastNode = (i === activePath.length - 1);
     const shouldStream = isLastNode && !skipStreaming;
 
+    const turnLabel = node.depth === 0 ? 'Intro' : `Page #${node.depth}`;
+    const title = node.meta?.title || '진행';
+    const locationStr = (node.stateSnapshot?.location) ? ` @ ${node.stateSnapshot.location}` : '';
     const headerText = `${turnLabel}. ${title}${locationStr}`;
 
-    // --- Always attach options for all turns (past and current) ---
+    // --- Handling Options & Sequential Flow ---
     if (shouldStream) {
-      // For the last node with streaming: set spacer, scroll, and start sequence
-      headerTextContainer.textContent = ''; // Clear for streaming
+      if (!node.isEnding) headerTextContainer.textContent = '';
       setScrollSpacer(container);
 
       setTimeout(() => {
         turnEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
 
-      // Systematic sequential reveal
       (async () => {
         await sleep(STREAM_START_DELAY_MS);
 
-        await streamText(headerTextContainer, headerText, null);
-        await sleep(STREAM_BREAK_DELAY_MS);
+        // Header
+        if (!node.isEnding) {
+          await streamText(headerTextContainer, headerText, null);
+          await sleep(STREAM_BREAK_DELAY_MS);
+        }
 
-        // Scroll to bottom
-        container.scrollTop = container.scrollHeight;
+        // Always update visuals at the start of the final turn reveal
+        updateThemeVisuals(session, node.stateSnapshot);
 
-        // Update theme visuals based on current node tension
-        updateThemeVisuals(session, node.stateSnapshot?.tensionLevel || 1);
+        // Content
+        if (node.isEnding) {
+          await renderEnding(turnEl, node, false);
+        } else {
+          const textEl = turnEl.querySelector('.story-text');
+          await streamText(textEl, node.text, session.worldSchema);
+          await sleep(STREAM_BREAK_DELAY_MS);
+          attachOptions(container, turnEl, node, session, onOptionSelect, false);
+        }
 
-        await streamText(textEl, node.text, session.worldSchema);
-        await sleep(STREAM_BREAK_DELAY_MS);
-
-        attachOptions(container, turnEl, node, session, onOptionSelect, false);
+        // Final cleanup
         shrinkScrollSpacer(container, turnEl);
       })();
     } else {
-      // Instant render (past turns or skipStreaming)
-      headerTextContainer.textContent = headerText;
-      textEl.innerHTML = formatStoryText(node.text, session.worldSchema);
-      attachOptions(container, turnEl, node, session, onOptionSelect, true);
+      // Instant render
+      if (node.isEnding) {
+        renderEnding(turnEl, node, true);
+      } else {
+        const textEl = turnEl.querySelector('.story-text');
+        headerTextContainer.textContent = headerText;
+        textEl.innerHTML = formatStoryText(node.text, session.worldSchema);
+        attachOptions(container, turnEl, node, session, onOptionSelect, true);
+      }
 
       if (isLastNode) {
-        // Last node rendered instantly (e.g. session load): set spacer
+        updateThemeVisuals(session, node.stateSnapshot);
         setScrollSpacer(container);
-        // Final scroll and theme update for safety
-        container.scrollTop = container.scrollHeight;
-        const lastNode = session.nodesById[activePath[activePath.length - 1]];
-        if (lastNode) {
-          updateThemeVisuals(session, lastNode.stateSnapshot?.tensionLevel || 1);
-        }
         setTimeout(() => {
           shrinkScrollSpacer(container, turnEl);
           turnEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -241,12 +226,12 @@ function setScrollSpacer(container) {
   if (!spacer) {
     spacer = document.createElement('div');
     spacer.className = 'scroll-spacer';
-    spacer.style.cssText = 'pointer-events: none;';
+    spacer.style.pointerEvents = 'none';
     container.appendChild(spacer);
   }
-  if (spacer.nextSibling) {
-    container.appendChild(spacer);
-  }
+  // CRITICAL: Always move spacer to the very end of the container
+  container.appendChild(spacer);
+
   const scrollParent = container.closest('.panel-center__content');
   if (scrollParent) {
     spacer.style.height = `${scrollParent.clientHeight}px`;
@@ -288,6 +273,12 @@ export function formatStoryText(text, schema) {
 
   // Wrap dialogue (double quotes). Matches across standard quotes.
   html = html.replace(/"([^"]+)"/g, '<span class="story-dialogue">"$1"</span>');
+
+  // Parse << dialogue >> into immersive blocks
+  // Note: escapeHTML was called above, so we match &lt;&lt; and &gt;&gt;
+  html = html.replace(/&lt;&lt;([^&]+)&gt;&gt;/g, (match, p1) => {
+    return `<div class="text-conversation">"${p1.trim()}"</div>`;
+  });
 
   // Highlight Names
   if (schema) {
@@ -403,26 +394,99 @@ function interpolateColor(color1, color2, factor) {
 }
 
 /**
- * Dynamically update the background color based on tensionLevel.
+ * Dynamically update the background color based on narrative phase.
+ * Exported so App.js can call this on tree node rollback.
  */
-function updateThemeVisuals(session, tensionLevel) {
+export function updateThemeVisuals(session, stateSnapshot) {
   if (!session || !session.themeColor) return;
 
-  const initialColor = session.themeColor.initialThemeColor || '#0f111a';
-  const climaxColor = session.themeColor.climaxThemeColor || '#000000';
+  // Apply subtle desaturation/darkening to protect user eyes (20% reduction)
+  const initialColor = applyColorFilter(session.themeColor.initialThemeColor || '#0f111a', 0.8, 0.8);
+  const climaxColor = applyColorFilter(session.themeColor.climaxThemeColor || '#000000', 0.8, 0.8);
 
-  // tensionLevel (1-10) -> factor (0.0-1.0)
-  const validTension = Math.max(1, Math.min(10, tensionLevel || 1));
-  const factor = (validTension - 1) / 9;
+  const snapshot = stateSnapshot || {};
+  const clocks = snapshot.clocks || { win: 0, lose: 0 };
+  const turnCount = snapshot.turnCount || 0;
+  const phaseKey = getNarrativePhaseKey(turnCount, clocks);
+
+  // Smooth turn-based base factor (0.0 at turn 0, 1.0 at turn 10)
+  const turnProgress = Math.min(1.0, turnCount / 10);
+
+  // Phase-based influence (ACT1: 0, ACT2: 0.4, ACT3: 0.85)
+  const phaseFactors = { ACT1: 0.05, ACT2: 0.45, ACT3: 0.85 };
+  const phaseBase = phaseFactors[phaseKey] ?? 0.0;
+
+  // Blend turnProgress and phaseBase for smooth but localized transition
+  let factor = (turnProgress + phaseBase) / 2;
+
+  // Final override for ENDING
+  if (phaseKey === 'ENDING') {
+    const isWin = (clocks.win || 0) >= (clocks.lose || 0);
+    // Move slightly back to initial if win, stay climax if lose
+    factor = isWin ? 0.0 : 1.0;
+  }
 
   const currentColor = interpolateColor(initialColor, climaxColor, factor);
 
   document.body.style.backgroundColor = currentColor;
-
-  // New: Update global CSS variables for universal theme sync
   document.documentElement.style.setProperty('--bg-primary', currentColor);
   document.documentElement.style.setProperty('--bg-secondary', blendColor(currentColor, 0.08));
   document.documentElement.style.setProperty('--bg-panel', blendColor(currentColor, 0.06));
+}
+
+/**
+ * Apply desaturation and darkening to a hex color.
+ * @param {string} hex 
+ * @param {number} satFactor (0.8 = 20% reduction)
+ * @param {number} lumFactor (0.8 = 20% reduction)
+ */
+function applyColorFilter(hex, satFactor, lumFactor) {
+  // Convert HEX to RGB
+  let [r, g, b] = hex.replace('#', '').match(/.{2}/g).map(h => parseInt(h, 16));
+
+  // Convert RGB to HSL
+  let R = r / 255, G = g / 255, B = b / 255;
+  let max = Math.max(R, G, B), min = Math.min(R, G, B);
+  let h, s, l = (max + min) / 2;
+
+  if (max === min) {
+    h = s = 0; // achromatic
+  } else {
+    let d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case R: h = (G - B) / d + (G < B ? 6 : 0); break;
+      case G: h = (B - R) / d + 2; break;
+      case B: h = (R - G) / d + 4; break;
+    }
+    h /= 6;
+  }
+
+  // Apply reductions
+  s *= satFactor;
+  l *= lumFactor;
+
+  // Convert HSL back to RGB
+  const hue2rgb = (p, q, t) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+
+  if (s === 0) {
+    r = g = b = Math.round(l * 255);
+  } else {
+    let q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    let p = 2 * l - q;
+    r = Math.round(hue2rgb(p, q, h + 1 / 3) * 255);
+    g = Math.round(hue2rgb(p, q, h) * 255);
+    b = Math.round(hue2rgb(p, q, h - 1 / 3) * 255);
+  }
+
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
 /**
@@ -659,7 +723,7 @@ function renderWelcome(container) {
 /**
  * Render the ending screen with optional streaming.
  */
-function renderEnding(container, node, skipStreaming) {
+async function renderEnding(container, node, skipStreaming) {
   const endingType = (node.meta && node.meta.endingType) || 'neutral';
 
   // Map internal types to display labels and CSS classes
@@ -672,27 +736,33 @@ function renderEnding(container, node, skipStreaming) {
   };
 
   const config = typeMap[endingType] || typeMap.neutral;
-  const badgeClass = config.cls;
-  const badgeLabel = config.label;
 
-
+  // Re-use the same story-turn structure — just a thin top border
   const endingDiv = document.createElement('div');
   endingDiv.className = 'ending-container';
-  endingDiv.style.cssText = 'padding: 32px 0; border-top: 1px dashed var(--border); margin-top: 16px;';
+  // Reduced top margin even further and removed border-top padding redundant with spacer
+  endingDiv.style.cssText = 'margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--border);';
 
-  const badgeEl = document.createElement('div');
-  badgeEl.className = `ending-badge ${badgeClass}`;
-  badgeEl.textContent = badgeLabel;
-  endingDiv.appendChild(badgeEl);
+  // Include Debug in the ending row to be compact
+  const debugWrap = document.createElement('div');
+  debugWrap.style.cssText = 'display: flex; justify-content: flex-end; margin-bottom: 8px;';
+
+  const debugEl = document.createElement('div');
+  debugEl.className = 'debug-state-trigger tooltip';
+  debugEl.dataset.tooltip = `[Turn ${node.depth}] (ENDING)\nClocks: Win(${node.stateSnapshot?.clocks?.win}), Lose(${node.stateSnapshot?.clocks?.lose})\nLogic: ${node.logicalReasoning}`;
+  debugEl.style.cssText = 'font-size: 10px; opacity: 0.3; cursor: help; border: 1px solid currentColor; padding: 1px 4px; border-radius: 3px;';
+  debugEl.textContent = 'debug';
+  debugWrap.appendChild(debugEl);
+  endingDiv.appendChild(debugWrap);
 
   const textEl = document.createElement('div');
   textEl.className = 'story-text';
-  textEl.style.cssText = 'text-align: left; margin-top: 12px; font-weight: 600; color: var(--text-primary);';
+  textEl.style.cssText = 'margin-top: 12px; font-weight: 500;'; // Slight weight for punchiness
   endingDiv.appendChild(textEl);
 
   const hintEl = document.createElement('div');
-  hintEl.style.cssText = 'margin-top: 32px; color: var(--text-muted); font-size: 13px;';
-  hintEl.textContent = '트리에서 과거 선택지를 클릭하면 다른 경로를 탐험할 수 있습니다.';
+  hintEl.style.cssText = 'margin-top: 20px; color: var(--text-muted); font-size: 12px; opacity: 0.8;';
+  hintEl.textContent = '트리에서 과거 경로를 클릭하여 다른 운명을 탐험해보세요.';
   endingDiv.appendChild(hintEl);
 
   container.appendChild(endingDiv);
@@ -700,7 +770,7 @@ function renderEnding(container, node, skipStreaming) {
   if (skipStreaming) {
     textEl.innerHTML = formatStoryText(node.text, null);
   } else {
-    streamText(textEl, node.text, null, null);
+    await streamText(textEl, node.text, null, null);
   }
 }
 
