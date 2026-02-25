@@ -37,9 +37,27 @@ export function openSettingsModal(modalRoot, onClose) {
       </div>
 
       <div class="form-group">
+        <label class="label" for="settings-gemini-model">Gemini Model</label>
+        <select class="select" id="settings-gemini-model">
+          <option value="gemini-2.5-flash-lite" ${settings.geminiModel === 'gemini-2.5-flash-lite' ? 'selected' : ''}>gemini-2.5-flash-lite (Default)</option>
+          <option value="gemini-2.5-flash" ${settings.geminiModel === 'gemini-2.5-flash' ? 'selected' : ''}>gemini-2.5-flash</option>
+          <option value="gemini-3-flash-preview" ${settings.geminiModel === 'gemini-3-flash-preview' ? 'selected' : ''}>gemini-3-flash-preview</option>
+        </select>
+      </div>
+
+      <div class="form-group" style="border-top: 1px solid var(--border); padding-top: 20px; margin-top: 20px;">
         <label class="label" for="settings-openai-key">OpenAI API Key</label>
         <input class="input" type="password" id="settings-openai-key" 
                value="${settings.openaiApiKey || ''}" placeholder="OpenAI API 키" autocomplete="off" />
+      </div>
+
+      <div class="form-group">
+        <label class="label" for="settings-openai-model">OpenAI Model</label>
+        <select class="select" id="settings-openai-model">
+          <option value="gpt-4o-mini" ${settings.openaiModel === 'gpt-4o-mini' ? 'selected' : ''}>gpt-4o-mini (Default)</option>
+          <option value="gpt-4o" ${settings.openaiModel === 'gpt-4o' ? 'selected' : ''}>gpt-4o</option>
+          <option value="o3-mini" ${settings.openaiModel === 'o3-mini' ? 'selected' : ''}>o3-mini (Reasoning)</option>
+        </select>
       </div>
 
       <div class="modal__footer">
@@ -54,7 +72,9 @@ export function openSettingsModal(modalRoot, onClose) {
   // Inputs
   const providerSelect = overlay.querySelector('#settings-provider');
   const geminiInput = overlay.querySelector('#settings-gemini-key');
+  const geminiModelSelect = overlay.querySelector('#settings-gemini-model');
   const openaiInput = overlay.querySelector('#settings-openai-key');
+  const openaiModelSelect = overlay.querySelector('#settings-openai-model');
 
   // Close
   function close() {
@@ -80,9 +100,11 @@ export function openSettingsModal(modalRoot, onClose) {
   overlay.querySelector('#settings-save').addEventListener('click', () => {
     const provider = providerSelect.value;
     const geminiApiKey = geminiInput.value.trim();
+    const geminiModel = geminiModelSelect.value;
     const openaiApiKey = openaiInput.value.trim();
+    const openaiModel = openaiModelSelect.value;
 
-    saveSettings({ provider, geminiApiKey, openaiApiKey });
+    saveSettings({ provider, geminiApiKey, geminiModel, openaiApiKey, openaiModel });
     showToast('설정이 저장되었습니다.', 'success');
     close();
   });

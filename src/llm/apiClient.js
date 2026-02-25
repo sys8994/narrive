@@ -16,9 +16,9 @@ const LS_KEY_MODEL_GEMINI = 'ttg.gemini.model';
 
 const LS_KEY_TEMP = 'ttg.openai.temperature';
 
-const DEFAULT_PROV = 'openai';
+const DEFAULT_PROV = 'gemini';
 const DEFAULT_MODEL_OPENAI = 'gpt-4o-mini';
-const DEFAULT_MODEL_GEMINI = 'gemini-2.0-flash';
+const DEFAULT_MODEL_GEMINI = 'gemini-2.5-flash-lite';
 
 const ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 
@@ -29,17 +29,21 @@ export function getSettings() {
     return {
         provider: localStorage.getItem(LS_KEY_PROV) || DEFAULT_PROV,
         openaiApiKey: localStorage.getItem(LS_KEY_API_OPENAI) || '',
+        openaiModel: localStorage.getItem(LS_KEY_MODEL_OPENAI) || DEFAULT_MODEL_OPENAI,
         geminiApiKey: localStorage.getItem(LS_KEY_API_GEMINI) || '',
+        geminiModel: localStorage.getItem(LS_KEY_MODEL_GEMINI) || DEFAULT_MODEL_GEMINI,
     };
 }
 
 /**
  * Save settings to localStorage.
  */
-export function saveSettings({ provider, openaiApiKey, geminiApiKey }) {
+export function saveSettings({ provider, openaiApiKey, openaiModel, geminiApiKey, geminiModel }) {
     if (provider !== undefined) localStorage.setItem(LS_KEY_PROV, provider);
     if (openaiApiKey !== undefined) localStorage.setItem(LS_KEY_API_OPENAI, openaiApiKey);
+    if (openaiModel !== undefined) localStorage.setItem(LS_KEY_MODEL_OPENAI, openaiModel);
     if (geminiApiKey !== undefined) localStorage.setItem(LS_KEY_API_GEMINI, geminiApiKey);
+    if (geminiModel !== undefined) localStorage.setItem(LS_KEY_MODEL_GEMINI, geminiModel);
 }
 
 /**

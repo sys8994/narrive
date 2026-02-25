@@ -12,6 +12,7 @@
 import { getPathToRoot } from '../../core/treeEngine.js';
 import { getBrandIconHtml } from './BrandIcon.js';
 import { getNarrativePhaseLabel, getNarrativePhaseKey } from '../../core/narrativeEngine.js';
+import { addCustomOption, prefetchOption } from '../../core/gameEngine.js';
 
 // ─── Configurable Timing ─────────────────────────────────────────
 const STREAM_WORD_DELAY_MS = 35;   // delay between each word appearing
@@ -157,8 +158,8 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
     const isLastNode = (i === activePath.length - 1);
     const shouldStream = isLastNode && !skipStreaming;
 
-    const turnLabel = node.depth === 0 ? 'Intro' : `Page #${node.depth}`;
-    const title = node.meta?.title || '진행';
+    const turnLabel = node.depth === 0 ? 'Prologue' : `Page #${node.depth}`;
+    const title = node.meta?.title || (node.depth === 0 ? '시작되는 이야기' : '진행');
     const currentLocation = node.stateSnapshot?.location;
     const hasLocationChanged = (currentLocation && currentLocation !== lastLocation);
     const locationStr = hasLocationChanged ? ` @ ${currentLocation}` : '';
@@ -575,7 +576,7 @@ function buildOptions(optList, node, session, onOptionSelect, instant) {
   const canShowDirectInput = node.depth > 0 && !node.isEnding;
   let freeTextRow = null;
   if (canShowDirectInput) {
-    freeTextRow = buildActionTriggerButton(optList, onOptionSelect, instant);
+    freeTextRow = buildActionTriggerButton(optList, node, session, onOptionSelect, instant);
     optList.appendChild(freeTextRow);
   }
 
@@ -601,7 +602,7 @@ function buildOptions(optList, node, session, onOptionSelect, instant) {
 /**
  * Build a simple button that triggers the action modal.
  */
-function buildActionTriggerButton(optList, onOptionSelect, instant) {
+function buildActionTriggerButton(optList, node, session, onOptionSelect, instant) {
   const row = document.createElement('div');
   row.className = 'option-freetext';
 
@@ -617,9 +618,14 @@ function buildActionTriggerButton(optList, onOptionSelect, instant) {
 
   btn.addEventListener('click', () => {
     openActionModal((text) => {
-      // Disable all buttons in the current turn
-      optList.querySelectorAll('.option-btn').forEach(b => { b.disabled = true; });
-      onOptionSelect('__custom__', text);
+      const newOptionId = addCustomOption(session, node.id, text);
+      if (newOptionId) {
+        // Trigger prefetch for the new custom option
+        prefetchOption(session, node.id, newOptionId);
+        // Re-render only the options list for this turn immediately
+        optList.innerHTML = '';
+        buildOptions(optList, node, session, onOptionSelect, true);
+      }
     });
   });
 

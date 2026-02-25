@@ -108,7 +108,6 @@ Typing must be minimized.
 4) Maximum 2 may be type "text" (for proper nouns only).
 5) Use "checkbox" ONLY if multiple selections are narratively meaningful.
 6) Each "select" must have 4–7 options.
-7) Each select MUST include ONE option for "기타(직접 입력)" OR "상관없음(자동 생성)".
 8) Options must be hyper-specific and visually evocative. (No generic labels).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -148,7 +147,7 @@ You MUST respond with ONLY a JSON object in this exact schema:
       "category": "vibe" | "situation",
       "label": "Korean question text",
       "type": "select" | "text" | "checkbox",
-      "options": ["A", "B", "C", "기타(직접 입력)"],
+      "options": ["A", "B", "C"],
       "placeholder": "...",
       "required": true
     }
@@ -163,6 +162,17 @@ You MUST respond with ONLY a JSON object in this exact schema:
 
   const parsed = safeParseJSON(result.content);
   if (!parsed.ok) return { ok: false, error: `JSON 파싱 실패: ${parsed.error}`, raw: parsed.raw };
+
+  // Inject mandatory options for select-type questions at the engine level
+  if (Array.isArray(parsed.data.questions)) {
+    parsed.data.questions.forEach(q => {
+      if (q.type === 'select' && Array.isArray(q.options)) {
+        if (!q.options.includes('기타(직접 입력)')) q.options.push('기타(직접 입력)');
+        if (!q.options.includes('상관 없음(자동 생성)')) q.options.push('상관 없음(자동 생성)');
+      }
+    });
+  }
+
   return { ok: true, data: parsed.data };
 }
 
@@ -279,7 +289,6 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
   if (!parsed.ok) return { ok: false, error: `JSON 파싱 실패: ${parsed.error}`, raw: parsed.raw };
   return { ok: true, data: parsed.data };
 }
-
 
 
 

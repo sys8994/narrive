@@ -239,42 +239,12 @@ async function handleSetupComplete({ title, publicWorld, hiddenPlot, openingText
     // Apply theme
     applyTheme(session);
 
-    // Show opening text with "start" button and kick off prefetch!
-    const prefetchPromise = gameEngine.generateInitialOptions(session);
-    showOpeningScreen(session, prefetchPromise);
+    // Generate initial options (Turn 1) in background. 
+    // We stay at Turn 0 (Prologue) rendered normally in StoryView.
+    renderCurrentNode();
+    await gameEngine.generateInitialOptions(session);
 
     showToast('새로운 모험이 시작됩니다!', 'success');
-}
-
-function showOpeningScreen(session, prefetchPromise) {
-    els.storyContainer.innerHTML = `
-    <div class="story-opening">${escapeHTML(session.synopsis.openingText)}</div>
-    <div style="text-align: center;">
-      <button class="btn btn-primary" id="btn-start-game" style="padding: 14px 40px; font-size: 16px;">
-        ${getBrandIconHtml({ size: 18, className: 'brand-logo--inline' })}${escapeHTML(session.synopsis.entryLabel || '모험을 시작합니다.')}
-      </button>
-    </div>
-  `;
-
-    els.storyContainer.querySelector('#btn-start-game').addEventListener('click', async () => {
-        // Show loading on the start button itself
-        const startBtn = els.storyContainer.querySelector('#btn-start-game');
-        startBtn.disabled = true;
-        startBtn.innerHTML = '<span class="spinner" style="width:18px;height:18px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;"></span> 생성 중...';
-
-        const result = await prefetchPromise;
-        if (!result.ok) {
-            renderStoryError(els.storyContainer, result.error || 'LLM 호출 실패', () => {
-                const newPromise = gameEngine.generateInitialOptions(session);
-                showOpeningScreen(session, newPromise);
-            });
-            return;
-        }
-
-        await sessionManager.saveCurrentSession();
-        await refreshSaveList();
-        renderCurrentNode();
-    });
 }
 
 async function handleLoadSession(sessionId) {

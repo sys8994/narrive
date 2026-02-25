@@ -132,16 +132,87 @@ export async function generateInitialOptions(session) {
         { id: 'start', text: session.synopsis.entryLabel || '모험을 시작합니다.' },
         { id: 'new_start', text: '새 모험 시작' }
     ];
-    rootNode.selectedOptionId = 'start';
-
     tree.addNode(session, newNode);
     tree.addEdge(session, rootNode.id, 'start', newNode.id);
 
-    session.currentNodeId = newNode.id;
-    session.gameState = { ...newState };
-    session.updatedAt = now();
+    // REMOVAL: session.currentNodeId = newNode.id;
+    // We stay at rootNode (Turn 0) so the user can click the button.
+    // The prefetch ensures Node 1 is already cached.
 
     return { ok: true, data };
+}
+
+/**
+ * Manually add a custom option to a node.
+ * This does NOT progress the turn, but allows prefetching for it.
+ */
+export function addCustomOption(session, nodeId, text) {
+    const node = session.nodesById[nodeId];
+    if (!node) return null;
+
+    const customId = `custom_${generateId()}`;
+    const newOption = { id: customId, text };
+
+    if (!node.options) node.options = [];
+    node.options.push(newOption);
+
+    return customId;
+}
+
+/**
+ * Trigger prefetch for a specific option on a specific node.
+ */
+export async function prefetchOption(session, nodeId, optionId) {
+    const node = session.nodesById[nodeId];
+    if (!node) return;
+
+    const opt = node.options.find(o => o.id === optionId);
+    if (!opt) return;
+
+    const prefetchKey = `${nodeId}:${optionId}`;
+    if (inFlightPrefetches.has(prefetchKey)) return;
+
+    const parentState = node.stateSnapshot || session.gameState;
+
+    const attemptPrefetch = async () => {
+        try {
+            const result = await callPrompt3(session, opt);
+            if (!result.ok) return;
+
+            const data = result.data;
+            const newState = applyStatePatch(parentState, data);
+
+            const newNode = {
+                id: generateId(),
+                parentId: nodeId,
+                depth: node.depth + 1,
+                text: data.text || '',
+                options: data.options || [],
+                selectedOptionId: null,
+                stateSnapshot: { ...newState },
+                logicalReasoning: data.logicalReasoning || '',
+                isEnding: data.isEnding || false,
+                meta: { title: data.nodeTitle || `Turn ${newState.turnCount}` },
+                visited: false,
+                turnSummary: data.turnSummary || '',
+            };
+
+            if (data.isEnding && data.endingType) {
+                newNode.meta.endingType = data.endingType;
+            }
+
+            if (!tree.getChild(session, nodeId, opt.id)) {
+                tree.addNode(session, newNode);
+                tree.addEdge(session, nodeId, opt.id, newNode.id);
+            }
+        } finally {
+            inFlightPrefetches.delete(prefetchKey);
+        }
+    };
+
+    const promise = attemptPrefetch();
+    inFlightPrefetches.set(prefetchKey, promise);
+    return promise;
 }
 
 /**
