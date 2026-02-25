@@ -11,10 +11,10 @@ import { getNarrativePhaseKey } from '../core/narrativeEngine.js';
 // ─── Prompt #1: Background → Follow-up Questions ───────────────────
 
 export async function callPrompt1(userBackground) {
-    const messages = [
-        {
-            role: 'system',
-            content: `You are an elite World-Building Art Director designing a high-immersion structured interactive text RPG.
+  const messages = [
+    {
+      role: 'system',
+      content: `You are an elite World-Building Art Director designing a high-immersion structured interactive text RPG.
 
 The user will provide a short background description for their story concept.
 
@@ -154,16 +154,16 @@ You MUST respond with ONLY a JSON object in this exact schema:
     }
   ]
 }`
-        },
-        { role: 'user', content: userBackground }
-    ];
+    },
+    { role: 'user', content: userBackground }
+  ];
 
-    const result = await chatCompletion(messages, { jsonMode: true, model: 'gemini-2.5-flash', temperature: 0.8 });
-    if (!result.ok) return result;
+  const result = await chatCompletion(messages, { jsonMode: true, temperature: 0.8 });
+  if (!result.ok) return result;
 
-    const parsed = safeParseJSON(result.content);
-    if (!parsed.ok) return { ok: false, error: `JSON 파싱 실패: ${parsed.error}`, raw: parsed.raw };
-    return { ok: true, data: parsed.data };
+  const parsed = safeParseJSON(result.content);
+  if (!parsed.ok) return { ok: false, error: `JSON 파싱 실패: ${parsed.error}`, raw: parsed.raw };
+  return { ok: true, data: parsed.data };
 }
 
 
@@ -173,12 +173,12 @@ You MUST respond with ONLY a JSON object in this exact schema:
 // ─── Prompt #2: Form Answers → Synopsis + Opening + Theme ──────────
 
 export async function callPrompt2(userBackground, formAnswers) {
-    const answersText = Object.entries(formAnswers).map(([id, val]) => `${id}: ${val}`).join('\n');
+  const answersText = Object.entries(formAnswers).map(([id, val]) => `${id}: ${val}`).join('\n');
 
-    const messages = [
-        {
-            role: 'system',
-            content: `You are an elite Narrative Architect and Game Logic Engineer for a structured interactive text RPG.
+  const messages = [
+    {
+      role: 'system',
+      content: `You are an elite Narrative Architect and Game Logic Engineer for a structured interactive text RPG.
 
 Input Data:
 1) The user's original background concept.
@@ -224,17 +224,17 @@ GENERATE distinct, memorable Korean proper nouns for everything. NO generic plac
 - winConditions / loseConditions: Concrete narrative milestones.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-4. OPENING SCENE (openingText) - EXPOSITION FOCUS
+4. OPENING SCENE (openingText) - MACRO PROLOGUE FOCUS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- Write 2-3 paragraphs of highly immersive opening narration.
-- MUST explicitly establish the Protagonist: Reveal their 'role', 'limitation', and immediate physical/mental condition.
-- MUST establish the Environment: Vividly describe the sensory details (smell, temperature, lighting) of the "startingLocationId".
-- MUST establish the Hook: Introduce the immediate crisis based EXACTLY on the user's "Situation" answers. Preserve the mystery.
+- Write 2-3 paragraphs of a cinematic PROLOGUE. Each paragraph must be separated by two line breaks.
+- Focus on the macro-level world-building, the overarching atmosphere, the societal tension, or the history of the world.
+- Make it sound like a movie trailer voiceover setting the grand stage.
+- DO NOT describe the protagonist's immediate physical actions, their exact starting location, or the immediate Turn 1 crisis here. Leave the immediate action for the game engine to start.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 5. NARRATIVE PERSPECTIVE & WRITING STYLE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- Perspective: 2nd person. OMIT the subject "당신은". Describe actions directly (e.g., "굳게 닫힌 문을 조심스럽게 밀고 들어간다.").
+- Perspective: 2nd person. OMIT the subject "당신은" or "너는". Describe actions directly (e.g., "굳게 닫힌 문을 조심스럽게 밀고 들어간다.").
 - Tense & Tone: Use 반말/평서문 (~한다, ~했다). 
 - DIALOGUE RULE: All spoken dialogue MUST be enclosed in \`<<\` and \`>>\`. (e.g., 남자가 외쳤다. <<거기 멈춰!>>)
 
@@ -245,16 +245,16 @@ Before outputting JSON, silently verify:
 1. Is the "hiddenPlot" split into Truth and Framework, heavily referencing schema IDs?
 2. Does "protagonist.startingLocationId" EXACTLY match a location ID?
 3. Are all IDs in "connectedTo" real locations?
-4. Does the "openingText" explicitly describe the protagonist's identity and the starting location's sensory details?
+4. Does the "openingText" act as a MACRO PROLOGUE without explicitly starting the immediate physical action?
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT SCHEMA (STRICT JSON ONLY)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {
-  "title": "Story title (Korean, Immersive)",
+"title": "Story title (Korean, Immersive)",
   "publicWorld": "string (Markdown bullets)",
   "hiddenPlot": "string (Markdown bullets for PART A and PART B. > 600 characters)",
-  "openingText": "string (2-3 paragraphs. Deep exposition of character, location, and immediate crisis)",
+  "openingText": "string (2-3 paragraphs. Cinematic PROLOGUE setting the macro world vibe. No immediate character actions. Each paragraph separated by two line breaks.)",
   "initialThemeColor": "string (HEX code)",
   "climaxThemeColor": "string (HEX code)",
   "accentColor": "string (HEX code)",
@@ -269,39 +269,85 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
   }
 }
 `
-        },
-        { role: 'user', content: `## 배경 컨셉\n${userBackground}\n\n## 상세 답변\n${answersText}` }
-    ];
+    },
+    { role: 'user', content: `## 배경 컨셉\n${userBackground}\n\n## 상세 답변\n${answersText}` }
+  ];
 
-    const result = await chatCompletion(messages, { jsonMode: true, model: 'gemini-2.5-flash', temperature: 0.8 });
-    if (!result.ok) return result;
-    const parsed = safeParseJSON(result.content);
-    if (!parsed.ok) return { ok: false, error: `JSON 파싱 실패: ${parsed.error}`, raw: parsed.raw };
-    return { ok: true, data: parsed.data };
+  const result = await chatCompletion(messages, { jsonMode: true, temperature: 0.8 });
+  if (!result.ok) return result;
+  const parsed = safeParseJSON(result.content);
+  if (!parsed.ok) return { ok: false, error: `JSON 파싱 실패: ${parsed.error}`, raw: parsed.raw };
+  return { ok: true, data: parsed.data };
 }
-// ─── Prompt #3: Turn Progression (Dynamic Narrative Phases) ────────
+
+
+
+
+
+
+
+
+// ─── Prompt #3: Turn Progression (Dynamic Narrative Phases & Schema Injection) ────────
 
 function buildStoryContext(session, maxRecentNodes = 3) {
-    const path = treeEngine.getPathToRoot(session, session.currentNodeId);
-    if (path.length === 0) return "";
-    let contextString = "## Story History (Chronological)\n";
-    path.forEach((id, index) => {
-        const node = session.nodesById[id];
-        const isRecent = index >= path.length - maxRecentNodes;
-        const selectedOpt = node.selectedOptionId
-            ? (node.options.find((o) => o.id === node.selectedOptionId)?.text || '')
-            : 'None (Start)';
-        if (isRecent) {
-            contextString += `[Turn ${node.depth}] (FULL)\nText: ${node.text}\nAction Taken: ${selectedOpt}\n\n`;
-        } else {
-            const summary = node.turnSummary || node.text.substring(0, 50) + "...";
-            contextString += `[Turn ${node.depth}] (SUMMARY)\nSummary: ${summary}\nAction Taken: ${selectedOpt}\n\n`;
-        }
-    });
-    return contextString;
+  const path = treeEngine.getPathToRoot(session, session.currentNodeId);
+  if (path.length === 0) return "";
+  let contextString = "## Story History (Chronological)\n";
+  path.forEach((id, index) => {
+    const node = session.nodesById[id];
+    const isRecent = index >= path.length - maxRecentNodes;
+    const selectedOpt = node.selectedOptionId
+      ? (node.options.find((o) => o.id === node.selectedOptionId)?.text || '')
+      : 'None (Start)';
+    if (isRecent) {
+      contextString += `[Turn ${node.depth}] (FULL)\nText: ${node.text}\nAction Taken: ${selectedOpt}\n\n`;
+    } else {
+      const summary = node.turnSummary || node.text.substring(0, 50) + "...";
+      contextString += `[Turn ${node.depth}] (SUMMARY)\nSummary: ${summary}\nAction Taken: ${selectedOpt}\n\n`;
+    }
+  });
+  return contextString;
 }
 
-// ─── 서사 페이즈별 완벽히 독립된 디렉팅 ───
+/**
+ * buildDynamicSchemaContext — Filter and format the world schema for the current turn.
+ */
+function buildDynamicSchemaContext(session) {
+  const { gameState, synopsis } = session;
+  const worldSchema = synopsis.worldSchema || {};
+  const currentLocationId = gameState.location;
+
+  // 1. Current Location
+  const currentLoc = worldSchema.locations?.find(l => l.id === currentLocationId);
+  const locString = currentLoc
+    ? `[CURRENT LOCATION: ${currentLoc.name} (ID: ${currentLoc.id})]\n- ${currentLoc.desc}`
+    : `[CURRENT LOCATION: Unknown (ID: ${currentLocationId})]`;
+
+  // 2. Visible Exits
+  const connectedLocs = worldSchema.locations?.filter(l => currentLoc?.connectedTo?.includes(l.id)) || [];
+  const exitsString = connectedLocs.length > 0
+    ? `[VISIBLE EXITS / PATHS]\n` + connectedLocs.map(l => `- ${l.name} (Move to ID: ${l.id})`).join('\n')
+    : `[VISIBLE EXITS / PATHS]\n- None apparent.`;
+
+  // 3. Items in Room
+  const itemsHere = worldSchema.items?.filter(i => i.initialLocationId === currentLocationId && !gameState.inventory.includes(i.name)) || [];
+  const itemsString = itemsHere.length > 0
+    ? `[ITEMS IN THIS ROOM (Can be picked up or examined)]\n` + itemsHere.map(i => `- ${i.name}: ${i.desc}`).join('\n')
+    : `[ITEMS IN THIS ROOM]\n- No visible items.`;
+
+  // 4. Inventory
+  const inventoryString = `[INVENTORY/KEY ITEMS HELD]\n- ${gameState.inventory.length > 0 ? gameState.inventory.join(', ') : 'Empty.'}`;
+
+  // 5. Active NPCs (Randomly pick 1)
+  let npcString = "[ACTIVE NPC POTENTIAL]\n- None available.";
+  if (worldSchema.npcs && worldSchema.npcs.length > 0) {
+    const randomNpc = worldSchema.npcs[Math.floor(Math.random() * worldSchema.npcs.length)];
+    npcString = `[ACTIVE NPC POTENTIAL (Consider involving them)]\n- ${randomNpc.name} (${randomNpc.role}): Public Motive is '${randomNpc.motive}'`;
+  }
+
+  return `${locString}\n\n${exitsString}\n\n${itemsString}\n\n${inventoryString}\n\n${npcString}`;
+}
+
 const PHASE_ACT1 = `
 [PHASE: ACT 1 - 발단 (Introduction & Exposition)]
 - 톤 앤 매너: 차분하고 신비로우며, 긴장감은 아직 수면 아래에 있습니다.
@@ -325,8 +371,8 @@ const PHASE_ACT3 = `
 
 const PHASE_RESOLUTION = `
 [PHASE: RESOLUTION - 결말부 진입 (The Dust Settles)]
-- 톤 앤 매너: 모든 갈등이 방금 종료되었습니다. 승리했다면 거친 숨을 몰아쉬는 안도감이, 패배했다면 돌이킬 수 없는 절망감이 지배합니다.
-- 서술 목표: 클락(Clock) 점수에 따라 이번 사건이 어떻게 일단락되었는지(흑막의 죽음, 유저의 쓰러짐 등) 직후의 상황을 2~3문단으로 묘사하십시오.
+- 톤 앤 매너: 모든 갈등이 방금 종료되었습니다. 승리했다면 안도감이, 패배했다면 돌이킬 수 없는 절망감이 지배합니다.
+- 서술 목표: 클락(Clock) 점수에 따라 이번 사건이 어떻게 일단락되었는지 직후의 상황을 2~3문단으로 묘사하십시오.
 - 특수 룰 (CRITICAL):
   1. \`statePatch.addFlags\` 배열에 반드시 \`"epilogue_ready"\`를 추가하십시오.
   2. 선택지는 오직 다음 1개만 출력하십시오: [{"id": "opt_epilogue", "text": "에필로그를 확인한다."}]
@@ -335,55 +381,55 @@ const PHASE_RESOLUTION = `
 
 const PHASE_EPILOGUE = `
 [PHASE: EPILOGUE - 에필로그 (The Aftermath)]
-- 톤 앤 매너: 사건 이후 시간이 조금 흘렀거나, 영혼이 떠나는 듯한 정적이고 묵직한 여운.
-- 서술 목표: 유저의 이전 선택들과 누적된 결과를 바탕으로, 이 세계와 주인공의 최종적인 운명을 영화의 엔딩 크레딧처럼 3~4문단으로 장엄하게 묘사하십시오. 유저에게 깊은 감정적 여운을 남겨야 합니다.
+- 톤 앤 매너: 정적이고 묵직한 여운.
+- 서술 목표: 유저의 이전 선택들과 누적된 결과를 바탕으로, 이 세계와 주인공의 최종적인 운명을 영화의 엔딩 크레딧처럼 3~4문단으로 장엄하게 묘사하십시오.
 - 특수 룰 (CRITICAL):
   1. 더 이상의 행동은 불가능합니다. "options" 배열을 반드시 빈 배열([])로 반환하십시오.
   2. 반드시 \`isEnding\`을 true 로 설정하고, \`endingType\`을 명시하여 게임을 완전히 종결하십시오.
 `;
 
-
 export async function callPrompt3(session, selectedOption) {
-    const storyContext = buildStoryContext(session);
-    const state = session.gameState;
-    const clocks = state.clocks || { win: 0, lose: 0 };
-    const maxClock = Math.max(clocks.win, clocks.lose);
+  const storyContext = buildStoryContext(session);
+  const state = session.gameState;
+  const clocks = state.clocks || { win: 0, lose: 0 };
+  const maxClock = Math.max(clocks.win, clocks.lose);
 
-    // ─── 동적 페이즈 판별 로직 ───
-    let phaseMode = "ACT1";
-    let currentPhasePrompt = PHASE_ACT1;
+  // ─── 동적 페이즈 판별 로직 ───
+  let phaseMode = "ACT1";
+  let currentPhasePrompt = PHASE_ACT1;
 
-    if (state.flags?.epilogue_ready) {
-        phaseMode = "EPILOGUE";
-        currentPhasePrompt = PHASE_EPILOGUE;
-    } else if (maxClock >= 10 || state.turnCount >= 20) {
-        phaseMode = "RESOLUTION";
-        currentPhasePrompt = PHASE_RESOLUTION;
-    } else if (maxClock >= 7 || state.turnCount >= 14) {
-        phaseMode = "ACT3";
-        currentPhasePrompt = PHASE_ACT3;
-    } else if (maxClock >= 3 || state.turnCount >= 5) {
-        phaseMode = "ACT2";
-        currentPhasePrompt = PHASE_ACT2;
-    }
+  if (state.flags?.epilogue_ready) {
+    phaseMode = "EPILOGUE";
+    currentPhasePrompt = PHASE_EPILOGUE;
+  } else if (maxClock >= 10 || state.turnCount >= 20) {
+    phaseMode = "RESOLUTION";
+    currentPhasePrompt = PHASE_RESOLUTION;
+  } else if (maxClock >= 7 || state.turnCount >= 14) {
+    phaseMode = "ACT3";
+    currentPhasePrompt = PHASE_ACT3;
+  } else if (maxClock >= 3 || state.turnCount >= 5) {
+    phaseMode = "ACT2";
+    currentPhasePrompt = PHASE_ACT2;
+  }
 
-    const playerAction = selectedOption
-        ? `The player chose: "${selectedOption.text}"`
-        : 'This is the genesis of the story. Describe the starting scene based on the SITUATION setup.';
+  const playerAction = selectedOption
+    ? `The player chose: "${selectedOption.text}"`
+    : 'This is TURN 1 (The Drop-in). The macro prologue has just ended. Now, drop the camera directly into the protagonist\'s eyes. Explicitly describe their specific \'role\', their \'limitation\', the immediate sensory details of the current location, and the immediate physical crisis/threat they are facing right now. Transition the player from the world-building phase into visceral, present-tense reality.';
 
-    // ─── 동적 룰 조립 (결말부에는 불필요한 공통 룰 제거) ───
-    let dynamicRules = "";
-    if (phaseMode === "RESOLUTION" || phaseMode === "EPILOGUE") {
-        dynamicRules = `
+  // ─── 안티그래비티가 구현할 함수 호출 (동적 스키마 주입) ───
+  const dynamicSchemaContext = buildDynamicSchemaContext(session);
+
+  let dynamicRules = "";
+  if (phaseMode === "RESOLUTION" || phaseMode === "EPILOGUE") {
+    dynamicRules = `
 ────────────────────────────────────────
 ENDING LOGIC (OVERRIDE ALL OTHER RULES)
 ────────────────────────────────────────
 - Do NOT generate multiple diverse choices. Follow the PHASE specific rules for options exactly.
 - Anti-stalling is DISABLED. Focus entirely on narrative closure and emotional resonance.
-- If track_win >= 10, write a narrative of hard-fought success/truth. If track_lose >= 10, write a narrative of tragic failure/doom.
 `;
-    } else {
-        dynamicRules = `
+  } else {
+    dynamicRules = `
 ────────────────────────────────────────
 NORMAL PLAY LOGIC: PROGRESS & ANTI-STALLING
 ────────────────────────────────────────
@@ -398,34 +444,39 @@ CHOICE SPECIFICITY & DIVERSITY (CRITICAL)
 - TEXT ↔ OPTION LOCK: Every object/NPC in an option MUST be explicitly described in the text first.
 - DIVERSITY: Vary formats (Physical action, Dialogue/Stance, Deduction). Choosing A MUST sacrifice B.
 `;
-    }
+  }
 
-    const systemPrompt = `You are the Game Master of a structured interactive text RPG.
+  const systemPrompt = `You are the Game Master of a structured interactive text RPG.
 You are not merely writing prose. You are running a strict narrative simulation engine.
 
 ────────────────────────────────────────
 0. CURRENT NARRATIVE PHASE (ABSOLUTE PRIORITY)
 ────────────────────────────────────────
 ${currentPhasePrompt}
-* This phase's goals and rules OVERRIDE any conflicting general rules below.
 
 ────────────────────────────────────────
-1. CANON CONTINUITY & SCHEMA DISCIPLINE
+1. MANDATORY SCHEMA INJECTION & INTERACTION RULES
+────────────────────────────────────────
+Below is the physical reality of the current turn. You MUST follow these conditional rules based on the injected data:
+
+${dynamicSchemaContext}
+
+[CONDITIONAL INTERACTION RULES]
+- IF [ITEMS IN THIS ROOM] is NOT empty: You MUST explicitly describe the item in the text. At least ONE option MUST allow the player to interact with or pick up this item.
+- IF [ACTIVE NPC POTENTIAL] is provided: You MUST introduce this NPC into the scene this turn. They must speak or act based on their 'motive'. At least ONE option MUST involve reacting to or conversing with them.
+- IF the player attempts to move: They can ONLY move to locations listed in [VISIBLE EXITS]. If you provide a movement option, it must lead to one of these exact exits.
+- IF the player faces a physical obstacle: Review [INVENTORY]. If an item could logically help, subtly hint at it in the text.
+
+────────────────────────────────────────
+2. CANON CONTINUITY & ENGINE LOGIC
 ────────────────────────────────────────
 [World Vibe]: ${session.synopsis.publicWorld || 'N/A'}
 [Hidden Plot]: ${session.synopsis.hiddenPlot || 'N/A'}
-[World Schema]: ${JSON.stringify(session.synopsis.worldSchema || {})}
-[Past Key Events]: ${state.eventLedger ? state.eventLedger.join('\\n') : 'None'}
 [Story History]:\n${storyContext}
 [Current State]: ${JSON.stringify(state)}
 
-SCHEMA BINDING: Treat worldSchema as a strict physical engine. Exits must align with "connectedTo". NPCs must act on their "motive" and "secret".
-
-────────────────────────────────────────
-2. NARRATIVE ENGINE RULES
-────────────────────────────────────────
-1. Fragmentation of Truth: Never reveal the full [사건의 전말] at once (unless in Epilogue). Reveal fragments ONLY when clues are investigated.
-2. Invisible Hand Options: In ACT1/2, ensure at least ONE option subtly hooks the player toward a clue in the Hidden Plot without being meta.
+- Fragmentation of Truth: Never reveal the full [사건의 전말] at once. Reveal fragments ONLY when clues are investigated.
+- Invisible Hand Options: In ACT1/2, ensure at least ONE option subtly hooks the player toward a clue in the Hidden Plot without being meta.
 
 ────────────────────────────────────────
 3. STATE INTEGRITY (PATCH-BASED)
@@ -446,7 +497,7 @@ NARRATIVE PERSPECTIVE & WRITING STYLE
 OUTPUT SCHEMA (STRICT JSON ONLY)
 ────────────────────────────────────────
 {
-  "logicalReasoning": "string (1-3 sentences explaining causality based on phase/flags/inventory/hidden plot)",
+  "logicalReasoning": "string (1-3 sentences explaining causality)",
   "text": "string (Paragraphs of story. 주어 생략. Dialogue uses << >>)",
   "turnSummary": "string (1-sentence concise Korean summary of this turn)",
   "statePatch": {
@@ -466,17 +517,17 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
 }
 `;
 
-    const messages = [
-        { role: 'system', content: systemPrompt },
-        {
-            role: 'user',
-            content: `## Player Action\n${playerAction}\n\n## Current Inventory\n${state.inventory.join(', ') || 'None'}\n\n## Current Flags\n${JSON.stringify(state.flags || {})}`
-        }
-    ];
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    {
+      role: 'user',
+      content: `## Player Action\n${playerAction}\n\n## Current Inventory\n${state.inventory.join(', ') || 'None'}\n\n## Current Flags\n${JSON.stringify(state.flags || {})}`
+    }
+  ];
 
-    const result = await chatCompletion(messages, { jsonMode: true, model: 'gpt-4o-mini', temperature: 0.3 });
-    if (!result.ok) return result;
-    const parsed = safeParseJSON(result.content);
-    if (!parsed.ok) return { ok: false, error: `JSON 파싱 실패: ${parsed.error}`, raw: parsed.raw };
-    return { ok: true, data: parsed.data };
+  const result = await chatCompletion(messages, { jsonMode: true });
+  if (!result.ok) return result;
+  const parsed = safeParseJSON(result.content);
+  if (!parsed.ok) return { ok: false, error: `JSON 파싱 실패: ${parsed.error}`, raw: parsed.raw };
+  return { ok: true, data: parsed.data };
 }

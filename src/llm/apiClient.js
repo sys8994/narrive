@@ -16,9 +16,9 @@ const LS_KEY_MODEL_GEMINI = 'ttg.gemini.model';
 
 const LS_KEY_TEMP = 'ttg.openai.temperature';
 
-const DEFAULT_PROV = 'gemini';
+const DEFAULT_PROV = 'openai';
 const DEFAULT_MODEL_OPENAI = 'gpt-4o-mini';
-const DEFAULT_MODEL_GEMINI = 'gemini-2.5-flash';
+const DEFAULT_MODEL_GEMINI = 'gemini-2.0-flash';
 
 const ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 
@@ -27,7 +27,7 @@ const ENDPOINT = 'https://api.openai.com/v1/chat/completions';
  */
 export function getSettings() {
     return {
-        provider: localStorage.getItem(LS_KEY_PROV) || 'gemini',
+        provider: localStorage.getItem(LS_KEY_PROV) || DEFAULT_PROV,
         openaiApiKey: localStorage.getItem(LS_KEY_API_OPENAI) || '',
         geminiApiKey: localStorage.getItem(LS_KEY_API_GEMINI) || '',
     };
@@ -68,11 +68,19 @@ export function hasAnyApiKey() {
  */
 export async function chatCompletion(messages, options = {}) {
     const settings = getSettings();
-    const requestedModel = options.model || DEFAULT_MODEL_GEMINI;
 
-    // Detect target provider based on model name
-    let targetProvider = requestedModel.startsWith('gemini') ? 'gemini' : 'openai';
-    let targetModel = requestedModel;
+    // 1. Determine target provider and model
+    let targetProvider = settings.provider;
+    let targetModel = options.model;
+
+    if (!targetModel) {
+        // No explicit model requested -> use current provider's default
+        targetModel = (targetProvider === 'gemini') ? DEFAULT_MODEL_GEMINI : DEFAULT_MODEL_OPENAI;
+    } else {
+        // Explicit model requested -> detect provider from name
+        targetProvider = targetModel.startsWith('gemini') ? 'gemini' : 'openai';
+    }
+
     let apiKey = (targetProvider === 'gemini') ? settings.geminiApiKey : settings.openaiApiKey;
 
     // Fallback logic

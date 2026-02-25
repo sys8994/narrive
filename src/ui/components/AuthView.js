@@ -63,7 +63,7 @@ export function renderAuthView(container, onComplete) {
         saveSettings({
             geminiApiKey,
             openaiApiKey,
-            provider: geminiApiKey ? 'gemini' : 'openai' // Set initial provider
+            provider: openaiApiKey ? 'openai' : 'gemini' // Set initial provider (default to openai if key exists)
         });
 
         showToast('인증에 성공했습니다. 모험을 준비합니다.', 'success');

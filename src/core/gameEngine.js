@@ -129,7 +129,7 @@ export async function generateInitialOptions(session) {
     }
 
     rootNode.options = [
-        { id: 'start', text: '모험 시작' },
+        { id: 'start', text: session.synopsis.entryLabel || '모험을 시작합니다.' },
         { id: 'new_start', text: '새 모험 시작' }
     ];
     rootNode.selectedOptionId = 'start';
@@ -190,9 +190,18 @@ export async function progressTurn(session, optionId, customText) {
 
     // 2. Call LLM
     let selectedOption;
+    let actualOptionId = optionId;
+
     if (optionId === '__custom__' && customText) {
         // Free-text custom action from the player
-        selectedOption = { id: '__custom__', text: customText };
+        // Generate a unique ID so this action persists as a distinct option
+        actualOptionId = `custom_${generateId()}`;
+        selectedOption = { id: actualOptionId, text: customText };
+
+        // Add to current node's options so it renders as a button in history
+        if (!currentNode.options) currentNode.options = [];
+        currentNode.options.push(selectedOption);
+        currentNode.selectedOptionId = actualOptionId;
     } else {
         selectedOption = currentNode.options.find((o) => o.id === optionId);
     }
@@ -228,7 +237,7 @@ export async function progressTurn(session, optionId, customText) {
 
     // Update session
     tree.addNode(session, newNode);
-    tree.addEdge(session, session.currentNodeId, optionId, newNode.id);
+    tree.addEdge(session, session.currentNodeId, actualOptionId, newNode.id);
     session.currentNodeId = newNode.id;
     session.gameState = { ...newState };
     session.updatedAt = now();

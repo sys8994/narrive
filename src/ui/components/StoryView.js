@@ -63,6 +63,7 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
   for (let i = 0; i < existingTurns.length; i++) {
     const turnEl = existingTurns[i];
     const nodeId = turnEl.dataset.nodeId;
+    const node = session.nodesById[nodeId];
 
     if (activePath[i] === nodeId) {
       syncIndex = i + 1; // It matches. Keep it.
@@ -81,7 +82,7 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
           const badge = btn.querySelector('.option-btn__badge');
           if (btn.dataset.optionId === node.selectedOptionId) {
             btn.classList.add('option-btn--was-selected');
-            if (badge) badge.textContent = '(Selected)';
+            if (badge) badge.textContent = '';
           } else {
             btn.classList.remove('option-btn--was-selected');
             if (badge) badge.textContent = '';
@@ -263,7 +264,7 @@ function shrinkScrollSpacer(container, lastTurnEl) {
 function attachOptions(container, turnEl, node, session, onOptionSelect, instant) {
   const optList = document.createElement('div');
   optList.className = 'options-list';
-  buildOptions(optList, node, onOptionSelect, instant);
+  buildOptions(optList, node, session, onOptionSelect, instant);
   turnEl.appendChild(optList);
   // appendStateBar(turnEl, session);
 }
@@ -278,7 +279,9 @@ export function formatStoryText(text, schema) {
   let html = escapeHTML(text);
 
   // Wrap dialogue (double quotes). Matches across standard quotes.
-  html = html.replace(/"([^"]+)"/g, '<span class="story-dialogue">"$1"</span>');
+  html = html.replace(/"([^"]+)"/g, (match, p1) => {
+    return `<div class="text-conversation">"${p1.trim()}"</div>`;
+  });
 
   // Parse << dialogue >> into immersive blocks
   // Note: escapeHTML was called above, so we match &lt;&lt; and &gt;&gt;
@@ -511,14 +514,14 @@ function blendColor(hex, amount) {
 /**
  * Build and reveal option buttons, optionally with staggered animation.
  */
-function buildOptions(optList, node, onOptionSelect, instant) {
+function buildOptions(optList, node, session, onOptionSelect, instant) {
   const buttons = [];
   let options = [...(node.options || [])];
 
   // Dynamic fallback for Intro node (Reuse synopsis for new stories)
   if (node.depth === 0) {
     if (!options.find(o => o.id === 'start')) {
-      options.unshift({ id: 'start', text: '모험 시작' });
+      options.unshift({ id: 'start', text: session?.synopsis?.entryLabel || '모험을 시작합니다.' });
     }
     if (!options.find(o => o.id === 'new_start')) {
       options.push({ id: 'new_start', text: '새 모험 시작' });
@@ -569,8 +572,12 @@ function buildOptions(optList, node, onOptionSelect, instant) {
   });
 
   // Free-text input option at the end
-  // const freeTextRow = buildFreeTextInput(optList, onOptionSelect, instant);
-  // optList.appendChild(freeTextRow);
+  const canShowDirectInput = node.depth > 0 && !node.isEnding;
+  let freeTextRow = null;
+  if (canShowDirectInput) {
+    freeTextRow = buildActionTriggerButton(optList, onOptionSelect, instant);
+    optList.appendChild(freeTextRow);
+  }
 
   // Stagger reveal
   if (!instant) {
@@ -582,58 +589,95 @@ function buildOptions(optList, node, onOptionSelect, instant) {
     });
 
     // Reveal free-text after all option buttons
-    // setTimeout(() => {
-    //   freeTextRow.style.opacity = '1';
-    //   freeTextRow.style.transform = 'translateY(0)';
-    // }, buttons.length * STREAM_OPTION_DELAY_MS);
+    if (freeTextRow) {
+      setTimeout(() => {
+        freeTextRow.style.opacity = '1';
+        freeTextRow.style.transform = 'translateY(0)';
+      }, buttons.length * STREAM_OPTION_DELAY_MS);
+    }
   }
 }
 
 /**
- * Build free-text input row.
+ * Build a simple button that triggers the action modal.
  */
-function buildFreeTextInput(optList, onOptionSelect, instant) {
-  const freeTextRow = document.createElement('div');
-  freeTextRow.className = 'option-freetext';
+function buildActionTriggerButton(optList, onOptionSelect, instant) {
+  const row = document.createElement('div');
+  row.className = 'option-freetext';
 
   if (!instant) {
-    freeTextRow.style.opacity = '0';
-    freeTextRow.style.transform = 'translateY(8px)';
-    freeTextRow.style.transition = `opacity ${STREAM_FADE_MS}ms ease, transform ${STREAM_FADE_MS}ms ease`;
+    row.style.opacity = '0';
+    row.style.transform = 'translateY(8px)';
+    row.style.transition = `opacity ${STREAM_FADE_MS}ms ease, transform ${STREAM_FADE_MS}ms ease`;
   }
 
-  const freeInput = document.createElement('input');
-  freeInput.type = 'text';
-  freeInput.className = 'option-freetext__input';
-  freeInput.placeholder = '직접 행동을 입력하세요...';
+  const btn = document.createElement('button');
+  btn.className = 'btn-action-trigger';
+  btn.innerHTML = '<i class="fa-solid fa-pen-nib" style="margin-right:8px;"></i>직접 입력';
 
-  const freeBtn = document.createElement('button');
-  freeBtn.className = 'option-freetext__btn';
-  freeBtn.innerHTML = '<i class="fa-solid fa-arrow-right"></i>';
-  freeBtn.disabled = true;
-
-  freeInput.addEventListener('input', () => {
-    freeBtn.disabled = !freeInput.value.trim();
+  btn.addEventListener('click', () => {
+    openActionModal((text) => {
+      // Disable all buttons in the current turn
+      optList.querySelectorAll('.option-btn').forEach(b => { b.disabled = true; });
+      onOptionSelect('__custom__', text);
+    });
   });
 
-  const submitFreeText = () => {
-    const text = freeInput.value.trim();
-    if (!text) return;
-    freeInput.disabled = true;
-    freeBtn.disabled = true;
-    freeBtn.innerHTML = '<span class="spinner" style="width:14px;height:14px;border-width:2px;"></span>';
-    optList.querySelectorAll('.option-btn').forEach(b => { b.disabled = true; });
-    onOptionSelect('__custom__', text);
-  };
+  row.appendChild(btn);
+  return row;
+}
 
-  freeBtn.addEventListener('click', submitFreeText);
-  freeInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && freeInput.value.trim()) submitFreeText();
+/**
+ * Open a modal for custom action input.
+ */
+function openActionModal(onConfirm) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal action-modal';
+
+  modal.innerHTML = `
+    <div class="modal__header">직접 행동 입력</div>
+    <div class="modal__body" style="margin-bottom: 20px;">
+      <textarea class="action-modal__input" placeholder="구체적인 상황이나 행동을 입력하세요... (예: 주변에 숨겨진 장치가 있는지 벽을 더듬어본다)" autofocus></textarea>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn-secondary btn-cancel">취소</button>
+      <button class="btn btn-primary btn-confirm">확인</button>
+    </div>
+  `;
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  const input = modal.querySelector('.action-modal__input');
+  const cancelBtn = modal.querySelector('.btn-cancel');
+  const confirmBtn = modal.querySelector('.btn-confirm');
+
+  const close = () => overlay.remove();
+
+  cancelBtn.addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+  confirmBtn.addEventListener('click', () => {
+    const val = input.value.trim();
+    if (val) {
+      onConfirm(val);
+      close();
+    }
   });
 
-  freeTextRow.appendChild(freeInput);
-  freeTextRow.appendChild(freeBtn);
-  return freeTextRow;
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      confirmBtn.click();
+    }
+    if (e.key === 'Escape') close();
+  });
+
+  // Small delay to ensure autofocus works on next-tick after DOM insertion
+  setTimeout(() => input.focus(), 50);
 }
 
 /**
