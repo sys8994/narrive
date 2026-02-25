@@ -93,7 +93,7 @@ export async function init() {
         store.setState({ appState: 'auth' });
         // Hide main UI parts during auth if needed
         els.header.classList.add('hidden');
-        renderAuthView(els.main, () => {
+        renderAuthView(els.storyContainer, () => {
             els.header.classList.remove('hidden');
             handleStart();
         });
