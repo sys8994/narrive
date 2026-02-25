@@ -158,7 +158,7 @@ You MUST respond with ONLY a JSON object in this exact schema:
         { role: 'user', content: userBackground }
     ];
 
-    const result = await chatCompletion(messages, { jsonMode: true });
+    const result = await chatCompletion(messages, { jsonMode: true, model: 'gemini-2.5-flash', temperature: 0.8 });
     if (!result.ok) return result;
 
     const parsed = safeParseJSON(result.content);
@@ -258,6 +258,7 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
   "initialThemeColor": "string (HEX code)",
   "climaxThemeColor": "string (HEX code)",
   "accentColor": "string (HEX code)",
+  "entryLabel": "string (Korean, 2-3 words, 세계관과 스토리에 따라 달라짐. '모험을 시작합니다', '문이 열립니다', '어둠이 걷힙니다', '건물 안으로 진입합니다' 이런 식으로.)",
   "worldSchema": {
     "protagonist": { "id": "pc", "name": "string", "role": "string", "limitation": "string", "startingLocationId": "string" },
     "locations": [ { "id": "loc1", "name": "string", "desc": "string", "connectedTo": ["loc2"] } ],
@@ -272,14 +273,13 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
         { role: 'user', content: `## 배경 컨셉\n${userBackground}\n\n## 상세 답변\n${answersText}` }
     ];
 
-    const result = await chatCompletion(messages, { jsonMode: true });
+    const result = await chatCompletion(messages, { jsonMode: true, model: 'gemini-2.5-flash', temperature: 0.8 });
     if (!result.ok) return result;
     const parsed = safeParseJSON(result.content);
     if (!parsed.ok) return { ok: false, error: `JSON 파싱 실패: ${parsed.error}`, raw: parsed.raw };
     return { ok: true, data: parsed.data };
 }
-
-// ─── Prompt #3: Turn Progression (Modular Narrative Phases) ────────
+// ─── Prompt #3: Turn Progression (Dynamic Narrative Phases) ────────
 
 function buildStoryContext(session, maxRecentNodes = 3) {
     const path = treeEngine.getPathToRoot(session, session.currentNodeId);
@@ -301,34 +301,47 @@ function buildStoryContext(session, maxRecentNodes = 3) {
     return contextString;
 }
 
+// ─── 서사 페이즈별 완벽히 독립된 디렉팅 ───
 const PHASE_ACT1 = `
 [PHASE: ACT 1 - 발단 (Introduction & Exposition)]
-- 디렉팅 목표: 세계관의 질감, 유저(주인공)의 신분과 제약 조건, 그리고 현재 장소의 물리적 구조를 유저에게 자연스럽게 각인시키십시오.
-- 서술 규칙: 다짜고짜 스토리를 급전개시키지 마십시오. 유저가 주변 환경을 둘러보고, 이 세계의 불문율이나 분위기를 파악할 수 있도록 깊이 있는 묘사에 비중을 두십시오.
-- 선택지 방향: '주변 환경 탐색', '가진 물건 확인', '현재 상황 파악' 등 정보 수집과 상황 이해를 돕는 선택지를 반드시 포함하십시오.
+- 톤 앤 매너: 차분하고 신비로우며, 긴장감은 아직 수면 아래에 있습니다.
+- 서술 목표: 세계관의 냄새, 질감, 주인공의 상태를 깊이 있게 각인시키십시오. 스토리를 서둘러 전개하지 마십시오.
+- 선택지 룰: 공간을 탐색하고, 상황을 파악하며, NPC를 관찰하는 '정보 수집' 위주의 구체적 선택지를 제공하십시오.
 `;
 
 const PHASE_ACT2 = `
 [PHASE: ACT 2 - 전개 (Rising Action & Investigation)]
-- 디렉팅 목표: 본격적인 갈등과 위협을 노출시키며, P2의 [단서의 조각들]을 추적하도록 유도하십시오.
-- 서술 규칙: 행동에는 분명한 대가(Cost)가 따릅니다. 무모한 행동 시 부상을 입거나 아이템을 잃게 만드십시오.
-- 선택지 방향: '위험 감수(Risk)와 정보 획득' vs '안전(Safety)과 기회 상실' 사이에서 고민하게 만드는 무거운 선택지를 제공하십시오.
+- 톤 앤 매너: 갈등이 수면 위로 드러나며, 세계가 유저를 적대하기 시작합니다.
+- 서술 목표: P2에 설정된 [단서의 조각들]을 추적하도록 유도하십시오. 유저의 실수나 방황에 가차 없이 페널티(부상, 아이템 상실)를 부여하십시오.
+- 선택지 룰: '위험을 감수하고 진실에 다가갈 것인가' 아니면 '안전을 택하고 기회를 날릴 것인가'를 강요하는 갈등형 선택지를 제공하십시오.
 `;
 
 const PHASE_ACT3 = `
 [PHASE: ACT 3 - 절정 (Climax)]
-- 디렉팅 목표: 호흡을 짧고 긴박하게 유지하십시오. 흑막의 실체나 치명적인 위협이 유저의 눈앞에 직접적으로 들이닥쳐야 합니다.
-- 서술 규칙: 부정적 플래그(exhausted 등)가 있다면 가차 없이 치명적인 결과(영구적 손실, 신체 절단 등)로 연결하십시오.
-- 선택지 방향: 생존이나 돌이킬 수 없는 피해를 결정짓는, 극단적이고 폭력적인 선택지를 제공하십시오.
+- 톤 앤 매너: 호흡이 짧고, 폭력적이며, 극도로 긴박합니다.
+- 서술 목표: 흑막의 실체나 치명적인 위협이 직접적으로 들이닥친 상황입니다. 평화로운 해결책은 없습니다.
+- 선택지 룰: 목숨을 걸거나 무언가를 영구적으로 희생해야만 하는, 극단적이고 치명적인 선택지 2개를 강제하십시오.
 `;
 
-const PHASE_ENDING = `
-[PHASE: ENDING - 결말 (Resolution)]
-- 디렉팅 목표: 진척도 시계(Clocks)가 임계점을 넘었습니다. 이야기를 완전히 종결시키십시오.
-- 서술 규칙: 승리 혹은 파멸의 결과를 3~5문단으로 장엄하게, 영화의 엔딩 씬처럼 묘사하십시오.
-- 선택지 룰: 새로운 행동 선택지를 주지 마십시오. "options" 배열을 빈 배열([])로 반환하십시오.
-- 상태 변경: 반드시 "isEnding": true 로 설정하십시오.
+const PHASE_RESOLUTION = `
+[PHASE: RESOLUTION - 결말부 진입 (The Dust Settles)]
+- 톤 앤 매너: 모든 갈등이 방금 종료되었습니다. 승리했다면 거친 숨을 몰아쉬는 안도감이, 패배했다면 돌이킬 수 없는 절망감이 지배합니다.
+- 서술 목표: 클락(Clock) 점수에 따라 이번 사건이 어떻게 일단락되었는지(흑막의 죽음, 유저의 쓰러짐 등) 직후의 상황을 2~3문단으로 묘사하십시오.
+- 특수 룰 (CRITICAL):
+  1. \`statePatch.addFlags\` 배열에 반드시 \`"epilogue_ready"\`를 추가하십시오.
+  2. 선택지는 오직 다음 1개만 출력하십시오: [{"id": "opt_epilogue", "text": "에필로그를 확인한다."}]
+  3. 아직 게임을 끝내지 마십시오. \`isEnding\`은 false여야 합니다.
 `;
+
+const PHASE_EPILOGUE = `
+[PHASE: EPILOGUE - 에필로그 (The Aftermath)]
+- 톤 앤 매너: 사건 이후 시간이 조금 흘렀거나, 영혼이 떠나는 듯한 정적이고 묵직한 여운.
+- 서술 목표: 유저의 이전 선택들과 누적된 결과를 바탕으로, 이 세계와 주인공의 최종적인 운명을 영화의 엔딩 크레딧처럼 3~4문단으로 장엄하게 묘사하십시오. 유저에게 깊은 감정적 여운을 남겨야 합니다.
+- 특수 룰 (CRITICAL):
+  1. 더 이상의 행동은 불가능합니다. "options" 배열을 반드시 빈 배열([])로 반환하십시오.
+  2. 반드시 \`isEnding\`을 true 로 설정하고, \`endingType\`을 명시하여 게임을 완전히 종결하십시오.
+`;
+
 
 export async function callPrompt3(session, selectedOption) {
     const storyContext = buildStoryContext(session);
@@ -336,22 +349,65 @@ export async function callPrompt3(session, selectedOption) {
     const clocks = state.clocks || { win: 0, lose: 0 };
     const maxClock = Math.max(clocks.win, clocks.lose);
 
+    // ─── 동적 페이즈 판별 로직 ───
+    let phaseMode = "ACT1";
     let currentPhasePrompt = PHASE_ACT1;
-    if (maxClock >= 10 || state.turnCount >= 20) currentPhasePrompt = PHASE_ENDING;
-    else if (maxClock >= 7 || state.turnCount >= 14) currentPhasePrompt = PHASE_ACT3;
-    else if (maxClock >= 3 || state.turnCount >= 5) currentPhasePrompt = PHASE_ACT2;
+
+    if (state.flags?.epilogue_ready) {
+        phaseMode = "EPILOGUE";
+        currentPhasePrompt = PHASE_EPILOGUE;
+    } else if (maxClock >= 10 || state.turnCount >= 20) {
+        phaseMode = "RESOLUTION";
+        currentPhasePrompt = PHASE_RESOLUTION;
+    } else if (maxClock >= 7 || state.turnCount >= 14) {
+        phaseMode = "ACT3";
+        currentPhasePrompt = PHASE_ACT3;
+    } else if (maxClock >= 3 || state.turnCount >= 5) {
+        phaseMode = "ACT2";
+        currentPhasePrompt = PHASE_ACT2;
+    }
 
     const playerAction = selectedOption
         ? `The player chose: "${selectedOption.text}"`
         : 'This is the genesis of the story. Describe the starting scene based on the SITUATION setup.';
 
+    // ─── 동적 룰 조립 (결말부에는 불필요한 공통 룰 제거) ───
+    let dynamicRules = "";
+    if (phaseMode === "RESOLUTION" || phaseMode === "EPILOGUE") {
+        dynamicRules = `
+────────────────────────────────────────
+ENDING LOGIC (OVERRIDE ALL OTHER RULES)
+────────────────────────────────────────
+- Do NOT generate multiple diverse choices. Follow the PHASE specific rules for options exactly.
+- Anti-stalling is DISABLED. Focus entirely on narrative closure and emotional resonance.
+- If track_win >= 10, write a narrative of hard-fought success/truth. If track_lose >= 10, write a narrative of tragic failure/doom.
+`;
+    } else {
+        dynamicRules = `
+────────────────────────────────────────
+NORMAL PLAY LOGIC: PROGRESS & ANTI-STALLING
+────────────────────────────────────────
+- \`track_win\`: +1 if the player takes a meaningful risk, discovers a clue, or progresses the plot.
+- \`track_lose\`: +1 if the player wastes time, repeats an action, or fails a check.
+- ANTI-STALLING: If the player repeats the same intent or stalls, trigger a logical catastrophic consequence and set \`track_lose\` = 1.
+
+────────────────────────────────────────
+CHOICE SPECIFICITY & DIVERSITY (CRITICAL)
+────────────────────────────────────────
+- FORBIDDEN GENERIC VERBS: NEVER use "조사한다", "검토한다", "알아본다", "대화한다", "확인한다".
+- TEXT ↔ OPTION LOCK: Every object/NPC in an option MUST be explicitly described in the text first.
+- DIVERSITY: Vary formats (Physical action, Dialogue/Stance, Deduction). Choosing A MUST sacrifice B.
+`;
+    }
+
     const systemPrompt = `You are the Game Master of a structured interactive text RPG.
 You are not merely writing prose. You are running a strict narrative simulation engine.
 
 ────────────────────────────────────────
-0. CURRENT NARRATIVE PHASE (HARD CONTROL)
+0. CURRENT NARRATIVE PHASE (ABSOLUTE PRIORITY)
 ────────────────────────────────────────
 ${currentPhasePrompt}
+* This phase's goals and rules OVERRIDE any conflicting general rules below.
 
 ────────────────────────────────────────
 1. CANON CONTINUITY & SCHEMA DISCIPLINE
@@ -363,55 +419,36 @@ ${currentPhasePrompt}
 [Story History]:\n${storyContext}
 [Current State]: ${JSON.stringify(state)}
 
-SCHEMA BINDING & PHYSICAL REALITY (CRITICAL):
-You MUST treat the worldSchema as a strict physical engine.
-1. Spatial Awareness: When describing the current location, explicitly hint at the exits or paths leading to locations in the "connectedTo" array. Options for movement MUST logically align with these paths.
-2. NPC Motive Injection: If an NPC is present, their dialogue and actions MUST be heavily colored by their "motive" and "secret".
-3. Item Relevance: If a schema "item" is relevant or in the inventory, explicitly describe its physical presence, weight, or condition.
+SCHEMA BINDING: Treat worldSchema as a strict physical engine. Exits must align with "connectedTo". NPCs must act on their "motive" and "secret".
 
 ────────────────────────────────────────
-2. NARRATIVE ENGINE RULES (INTEGRATING HIDDEN PLOT)
+2. NARRATIVE ENGINE RULES
 ────────────────────────────────────────
-1. Fragmentation of Truth: Never reveal the full [사건의 전말] at once. Reveal fragments ONLY when the player investigates the mapped clues or presses NPCs.
-2. Framework-Driven Guidance: If the player stalls, trigger events from the [적대자의 목적과 동선] or [국면 전환 타임라인] to force the story forward.
-3. Invisible Hand Options: Ensure at least ONE option subtly hooks the player toward a clue or location mentioned in the Hidden Plot without being meta. (e.g., "환풍구 안쪽에서 바스락거리는 소리가 들린다. 덮개를 뜯어낸다.")
+1. Fragmentation of Truth: Never reveal the full [사건의 전말] at once (unless in Epilogue). Reveal fragments ONLY when clues are investigated.
+2. Invisible Hand Options: In ACT1/2, ensure at least ONE option subtly hooks the player toward a clue in the Hidden Plot without being meta.
 
 ────────────────────────────────────────
-3. STATE INTEGRITY & CAUSALITY (CoT)
+3. STATE INTEGRITY (PATCH-BASED)
 ────────────────────────────────────────
-Evaluate the outcome BEFORE writing text. Explain your logic in the \`logicalReasoning\` JSON field first.
-- Reference the current Phase penalty, relevant \`flags\`, and \`inventory\`.
-- PATCH-BASED STATE UPDATE: Only output the DELTA in \`statePatch\`. NEVER wipe the inventory or flags array. Preserve unmentioned state implicitly.
+Evaluate the outcome logically. Explain it in \`logicalReasoning\` based on phase/flags/inventory.
+- PATCH-BASED UPDATE: Only output the DELTA in \`statePatch\`. NEVER wipe the inventory or flags array. Preserve unmentioned state implicitly.
+
+${dynamicRules}
 
 ────────────────────────────────────────
-4. PROGRESS CLOCKS & ANTI-STALLING
-────────────────────────────────────────
-- \`track_win\`: +1 if the player takes a meaningful risk, discovers a clue, or progresses the plot.
-- \`track_lose\`: +1 if the player wastes time, repeats an action, or fails a check.
-- ANTI-STALLING: If the player repeats the same intent or stalls, trigger a logical catastrophic consequence and set \`track_lose\` = 1.
-
-────────────────────────────────────────
-5. NARRATIVE PERSPECTIVE & WRITING STYLE
+NARRATIVE PERSPECTIVE & WRITING STYLE
 ────────────────────────────────────────
 - Perspective: 2nd Person. STRICTLY OMIT the subject "당신은" or "너는". Describe actions directly.
-- Tense & Tone: Use 반말/평서문 (~한다, ~했다). Keep descriptions sensory and visceral.
-- DIALOGUE FORMATTING (CRITICAL): ALL spoken dialogue MUST be enclosed exactly in \`<<\` and \`>>\`. (e.g., 정호는 피를 토하며 외쳤다. <<당장 여기서 벗어나!>>)
-
-────────────────────────────────────────
-6. CHOICE SPECIFICITY & DIVERSITY
-────────────────────────────────────────
-FORBIDDEN GENERIC VERBS: NEVER use "조사한다", "검토한다", "알아본다", "대화한다", "확인한다", "생각해본다", "접근한다", "방법을 찾는다".
-
-- TEXT ↔ OPTION LOCK: Every object, NPC, or location mentioned in an option MUST be explicitly described in the preceding story text.
-- DIVERSITY: Vary formats (Physical action, Dialogue/Stance, Deduction, Risk Trade-off). Choosing A MUST sacrifice B.
+- Tense & Tone: Use 반말/평서문 (~한다, ~했다). Keep descriptions sensory.
+- DIALOGUE FORMATTING: ALL spoken dialogue MUST be enclosed exactly in \`<<\` and \`>>\`.
 
 ────────────────────────────────────────
 OUTPUT SCHEMA (STRICT JSON ONLY)
 ────────────────────────────────────────
 {
   "logicalReasoning": "string (1-3 sentences explaining causality based on phase/flags/inventory/hidden plot)",
-  "text": "string (1-4 paragraphs of story. 주어 생략. Dialogue uses << >>)",
-  "turnSummary": "string (1-sentence concise Korean summary of this turn's events)",
+  "text": "string (Paragraphs of story. 주어 생략. Dialogue uses << >>)",
+  "turnSummary": "string (1-sentence concise Korean summary of this turn)",
   "statePatch": {
     "addFlags": ["string"], "removeFlags": ["string"], "addItems": ["string"], "removeItems": ["string"], "locationChange": "string or null"
   },
@@ -421,8 +458,7 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
   },
   "tensionLevel": "number (1-10)",
   "options": [
-    { "id": "opt1", "text": "string (Highly specific action/dialogue. NO generic verbs.)" },
-    { "id": "opt2", "text": "string (Highly specific action/dialogue. NO generic verbs.)" }
+    { "id": "string", "text": "string" }
   ],
   "isEnding": "boolean",
   "endingType": "string ('win', 'lose', 'neutral', or null)",
@@ -438,7 +474,7 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
         }
     ];
 
-    const result = await chatCompletion(messages, { jsonMode: true });
+    const result = await chatCompletion(messages, { jsonMode: true, model: 'gpt-4o-mini', temperature: 0.3 });
     if (!result.ok) return result;
     const parsed = safeParseJSON(result.content);
     if (!parsed.ok) return { ok: false, error: `JSON 파싱 실패: ${parsed.error}`, raw: parsed.raw };

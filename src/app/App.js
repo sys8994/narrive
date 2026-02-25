@@ -16,12 +16,13 @@ import { renderStoryView, renderStoryError, updateThemeVisuals } from '../ui/com
 import { renderTreeNav } from '../ui/components/TreeNav.js';
 import { renderJsonViewer } from '../ui/components/JsonViewer.js';
 import { renderHomeView } from '../ui/components/HomeView.js';
+import { renderAuthView } from '../ui/components/AuthView.js';
 import { getBrandIconHtml } from '../ui/components/BrandIcon.js';
 
 import * as sessionManager from '../core/sessionManager.js';
 import * as gameEngine from '../core/gameEngine.js';
 import { initSeedPool } from '../core/seedManager.js';
-import { getSettings } from '../llm/apiClient.js';
+import { getSettings, hasAnyApiKey } from '../llm/apiClient.js';
 
 
 /** @type {ReturnType<typeof createStore>} */
@@ -36,7 +37,7 @@ let els;
 export async function init() {
     // Create reactive store
     store = createStore({
-        appState: 'idle',      // 'idle' | 'setup' | 'playing'
+        appState: 'idle',      // 'idle' | 'auth' | 'setup' | 'playing'
         sessionList: [],
         activeSessionId: null,
         jsonViewEnabled: false,
@@ -87,15 +88,26 @@ export async function init() {
     // Initialize seed pool for setup wizard
     initSeedPool();
 
-    // Start at Home View
-    handleHome();
-
-
-
+    // Check for API keys
+    if (!hasAnyApiKey()) {
+        store.setState({ appState: 'auth' });
+        // Hide main UI parts during auth if needed
+        els.header.classList.add('hidden');
+        renderAuthView(els.main, () => {
+            els.header.classList.remove('hidden');
+            handleStart();
+        });
+    } else {
+        handleStart();
+    }
 }
 
-
-
+/**
+ * Common entry point after auth is confirmed.
+ */
+function handleStart() {
+    handleHome();
+}
 /**
  * Refresh the session list from storage.
  */
@@ -202,7 +214,7 @@ function handleNewGame() {
     renderTreeNav({ container: els.treeContent, session: null, onNodeClick: () => { } });
 }
 
-async function handleSetupComplete({ title, publicWorld, hiddenPlot, openingText, initialThemeColor, climaxThemeColor, accentColor, worldSchema }) {
+async function handleSetupComplete({ title, publicWorld, hiddenPlot, openingText, entryLabel, initialThemeColor, climaxThemeColor, accentColor, worldSchema }) {
     const settings = getSettings();
 
     // Create session
@@ -211,6 +223,7 @@ async function handleSetupComplete({ title, publicWorld, hiddenPlot, openingText
         publicWorld,
         hiddenPlot,
         openingText,
+        entryLabel,
         initialThemeColor,
         climaxThemeColor,
         accentColor,
@@ -238,7 +251,7 @@ function showOpeningScreen(session, prefetchPromise) {
     <div class="story-opening">${escapeHTML(session.synopsis.openingText)}</div>
     <div style="text-align: center;">
       <button class="btn btn-primary" id="btn-start-game" style="padding: 14px 40px; font-size: 16px;">
-        ${getBrandIconHtml({ size: 18, className: 'brand-logo--inline' })}${escapeHTML(session.synopsis.worldSchema?.adventureLabel || '모험 시작')}
+        ${getBrandIconHtml({ size: 18, className: 'brand-logo--inline' })}${escapeHTML(session.synopsis.entryLabel || '모험을 시작합니다.')}
       </button>
     </div>
   `;

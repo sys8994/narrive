@@ -50,9 +50,10 @@ export function createInitialState() {
  * @param {string} params.accentColor
  * @param {string} params.model
  * @param {number} params.temperature
+ * @param {string} params.entryLabel
  * @returns {Object} GameSessionBlob
  */
-export function createSession({ title, publicWorld, hiddenPlot, openingText, initialThemeColor, climaxThemeColor, accentColor, model, temperature, worldSchema }) {
+export function createSession({ title, publicWorld, hiddenPlot, openingText, entryLabel, initialThemeColor, climaxThemeColor, accentColor, model, temperature, worldSchema }) {
     const sessionId = generateId();
     const rootId = generateId();
     const timestamp = now();
@@ -81,7 +82,7 @@ export function createSession({ title, publicWorld, hiddenPlot, openingText, ini
             climaxThemeColor: climaxThemeColor || '#000000',
             accentColor: accentColor || '#ff9e80',
         },
-        synopsis: { publicWorld, hiddenPlot, openingText },
+        synopsis: { publicWorld, hiddenPlot, openingText, entryLabel },
         worldSchema: worldSchema || null,
 
         llm: { model, temperature },

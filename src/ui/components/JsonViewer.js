@@ -13,7 +13,7 @@ export function renderJsonViewer(container, session) {
         container.innerHTML = '<div class="empty-state">세션 데이터가 없습니다.</div>';
         return;
     }
-
+    console.log('session', session)
     // Define sections we want to display
     const sections = [
         { id: 'session-core', title: 'Core Session Data', data: { id: session.id, title: session.title, createdAt: session.createdAt, updatedAt: session.updatedAt, currentNodeId: session.currentNodeId } },

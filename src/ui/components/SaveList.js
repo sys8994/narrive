@@ -5,7 +5,7 @@
 
 import { formatDate } from '../../core/time.js';
 import { getBrandIconHtml } from './BrandIcon.js';
-import { getSettings, hasApiKey } from '../../llm/apiClient.js';
+import { getSettings, hasAnyApiKey } from '../../llm/apiClient.js';
 
 /**
  * Render the save list UI.
@@ -20,7 +20,7 @@ import { getSettings, hasApiKey } from '../../llm/apiClient.js';
  */
 export function renderSaveList({ headerEl, bodyEl, sessions, activeSessionId, onNewGame, onLoadSession, onDeleteSession }) {
   // Header: new game button
-  const apiKeySet = hasApiKey();
+  const apiKeySet = hasAnyApiKey();
   headerEl.innerHTML = `
     <button class="btn btn-primary btn-block" id="btn-new-game" ${apiKeySet ? '' : 'disabled'}
             title="${apiKeySet ? '새 게임 시작' : 'API Key를 먼저 설정해주세요'}">

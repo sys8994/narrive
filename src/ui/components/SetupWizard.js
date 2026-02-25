@@ -206,7 +206,6 @@ export function renderSetupWizard({ container, onComplete, onCancel }) {
     container.innerHTML = `
       <div class="setup-wizard">
         <div class="setup-wizard__step">
-          <div class="setup-wizard__badge">${isVibe ? 'STEP 2: VIBE' : 'STEP 3: SITUATION'}</div>
           <h2 class="setup-wizard__title">${escapeHTML(phaseTitle)}</h2>
           <p class="setup-wizard__subtitle">${escapeHTML(phaseSubtitle)}</p>
         </div>
@@ -254,6 +253,7 @@ export function renderSetupWizard({ container, onComplete, onCancel }) {
       publicWorld: data.publicWorld || '',
       hiddenPlot: data.hiddenPlot || '',
       openingText: data.openingText || '',
+      entryLabel: data.entryLabel || '모험을 시작합니다.',
       initialThemeColor: data.initialThemeColor || '#0f111a',
       climaxThemeColor: data.climaxThemeColor || '#000000',
       accentColor: data.accentColor || '#7aa2ff',

@@ -17,9 +17,8 @@ const LS_KEY_MODEL_GEMINI = 'ttg.gemini.model';
 const LS_KEY_TEMP = 'ttg.openai.temperature';
 
 const DEFAULT_PROV = 'gemini';
-const DEFAULT_MODEL_OPENAI = 'gpt-5-mini';
-const DEFAULT_MODEL_GEMINI = 'gemini-2.0-flash';
-const DEFAULT_TEMP = 1;
+const DEFAULT_MODEL_OPENAI = 'gpt-4o-mini';
+const DEFAULT_MODEL_GEMINI = 'gemini-2.5-flash';
 
 const ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 
@@ -28,74 +27,84 @@ const ENDPOINT = 'https://api.openai.com/v1/chat/completions';
  */
 export function getSettings() {
     return {
-        provider: localStorage.getItem(LS_KEY_PROV) || DEFAULT_PROV,
+        provider: localStorage.getItem(LS_KEY_PROV) || 'gemini',
         openaiApiKey: localStorage.getItem(LS_KEY_API_OPENAI) || '',
-        openaiModel: localStorage.getItem(LS_KEY_MODEL_OPENAI) || DEFAULT_MODEL_OPENAI,
         geminiApiKey: localStorage.getItem(LS_KEY_API_GEMINI) || '',
-        geminiModel: localStorage.getItem(LS_KEY_MODEL_GEMINI) || DEFAULT_MODEL_GEMINI,
-        temperature: parseFloat(localStorage.getItem(LS_KEY_TEMP)) || DEFAULT_TEMP,
     };
 }
 
 /**
  * Save settings to localStorage.
  */
-export function saveSettings({ provider, apiKey, model, temperature }) {
+export function saveSettings({ provider, openaiApiKey, geminiApiKey }) {
     if (provider !== undefined) localStorage.setItem(LS_KEY_PROV, provider);
-
-    // Save to the currently selected provider's slots
-    if (provider === 'gemini') {
-        if (apiKey !== undefined) localStorage.setItem(LS_KEY_API_GEMINI, apiKey);
-        if (model !== undefined) localStorage.setItem(LS_KEY_MODEL_GEMINI, model);
-    } else {
-        if (apiKey !== undefined) localStorage.setItem(LS_KEY_API_OPENAI, apiKey);
-        if (model !== undefined) localStorage.setItem(LS_KEY_MODEL_OPENAI, model);
-    }
-
-    if (temperature !== undefined) localStorage.setItem(LS_KEY_TEMP, String(temperature));
+    if (openaiApiKey !== undefined) localStorage.setItem(LS_KEY_API_OPENAI, openaiApiKey);
+    if (geminiApiKey !== undefined) localStorage.setItem(LS_KEY_API_GEMINI, geminiApiKey);
 }
 
 /**
- * Check if API key is configured.
+ * Check if the application has at least one valid API key.
  * @returns {boolean}
  */
-export function hasApiKey() {
+export function hasAnyApiKey() {
     const settings = getSettings();
-    if (settings.provider === 'gemini') return !!settings.geminiApiKey;
-    return !!settings.openaiApiKey;
+    return !!(settings.openaiApiKey || settings.geminiApiKey);
 }
 
 /**
- * Call OpenAI Chat Completions API.
+ * Call Chat Completions API.
+ * 
+ * Logic:
+ * 1. If opts.model belongs to a provider with a key, use that.
+ * 2. If not, check if the other provider has a key. If so, fallback to its default model.
+ * 3. Both are missing, return error.
  *
  * @param {Array<{role:string, content:string}>} messages
  * @param {Object} [options]
- * @param {boolean} [options.jsonMode=false] — set response_format to json_object
- * @param {string}  [options.model] — override model
- * @param {number}  [options.temperature] — override temperature
+ * @param {boolean} [options.jsonMode=false]
+ * @param {string}  [options.model] 
+ * @param {number}  [options.temperature]
  * @returns {Promise<{ok:boolean, content?:string, usage?:Object, error?:string}>}
  */
 export async function chatCompletion(messages, options = {}) {
     const settings = getSettings();
-    const provider = settings.provider;
-    const apiKey = provider === 'gemini' ? settings.geminiApiKey : settings.openaiApiKey;
+    const requestedModel = options.model || DEFAULT_MODEL_GEMINI;
 
+    // Detect target provider based on model name
+    let targetProvider = requestedModel.startsWith('gemini') ? 'gemini' : 'openai';
+    let targetModel = requestedModel;
+    let apiKey = (targetProvider === 'gemini') ? settings.geminiApiKey : settings.openaiApiKey;
+
+    // Fallback logic
     if (!apiKey) {
-        return { ok: false, error: `${provider} API Key가 설정되지 않았습니다. 설정에서 입력해주세요.` };
+        if (targetProvider === 'gemini' && settings.openaiApiKey) {
+            targetProvider = 'openai';
+            targetModel = DEFAULT_MODEL_OPENAI;
+            apiKey = settings.openaiApiKey;
+            console.log(`[LLM Fallback] Gemini key missing. Falling back to OpenAI (${targetModel}).`);
+        } else if (targetProvider === 'openai' && settings.geminiApiKey) {
+            targetProvider = 'gemini';
+            targetModel = DEFAULT_MODEL_GEMINI;
+            apiKey = settings.geminiApiKey;
+            console.log(`[LLM Fallback] OpenAI key missing. Falling back to Gemini (${targetModel}).`);
+        } else {
+            return { ok: false, error: "API Key가 설정되지 않았습니다. 설정이나 초기화면에서 입력해주세요." };
+        }
     }
 
-    if (provider === 'gemini') {
-        return await geminiChatCompletion(apiKey, settings, messages, options);
+    const finalOptions = { ...options, model: targetModel };
+
+    if (targetProvider === 'gemini') {
+        return await geminiChatCompletion(apiKey, settings, messages, finalOptions);
     } else {
-        return await openaiChatCompletion(apiKey, settings, messages, options);
+        return await openaiChatCompletion(apiKey, settings, messages, finalOptions);
     }
 }
 
 async function openaiChatCompletion(apiKey, settings, messages, options) {
-
-    const temp = options.temperature ?? settings.temperature;
+    const temp = options.temperature ?? 1;
     const body = {
-        model: options.model || settings.openaiModel,
+        model: options.model,
         messages,
     };
 
