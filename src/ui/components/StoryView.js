@@ -535,7 +535,8 @@ function buildOptions(optList, node, onOptionSelect, instant) {
     // Option text
     const textSpan = document.createElement('span');
     textSpan.className = 'option-btn__text';
-    textSpan.textContent = opt.text;
+    // Replace <<dlg>> with "dlg" for simple but consistent look on buttons
+    textSpan.textContent = opt.text.replace(/<<([^>]+)>>/g, '"$1"');
     btn.appendChild(textSpan);
 
     // Badge area (shows "이전 선택" or loading spinner)

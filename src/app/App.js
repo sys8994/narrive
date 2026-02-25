@@ -238,7 +238,7 @@ function showOpeningScreen(session, prefetchPromise) {
     <div class="story-opening">${escapeHTML(session.synopsis.openingText)}</div>
     <div style="text-align: center;">
       <button class="btn btn-primary" id="btn-start-game" style="padding: 14px 40px; font-size: 16px;">
-        ${getBrandIconHtml({ size: 18, className: 'brand-logo--inline' })}모험 시작
+        ${getBrandIconHtml({ size: 18, className: 'brand-logo--inline' })}${escapeHTML(session.synopsis.worldSchema?.adventureLabel || '모험 시작')}
       </button>
     </div>
   `;

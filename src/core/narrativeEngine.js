@@ -15,16 +15,16 @@
  * @param {Object} clocks 
  * @returns {string}
  */
-export const HARD_ENDING_THRESHOLD = 4;
+export const HARD_ENDING_THRESHOLD = 9;
 
 /**
  * Returns a machine-readable key for the current narrative phase.
  */
 export function getNarrativePhaseKey(turnCount, clocks = {}) {
     const maxClock = Math.max(clocks.win || 0, clocks.lose || 0);
-    if (maxClock >= HARD_ENDING_THRESHOLD || turnCount >= 10) return "ENDING";
-    if (maxClock >= 3 || turnCount >= 7) return "ACT3";
-    if (maxClock >= 1 || turnCount >= 3) return "ACT2";
+    if (maxClock >= HARD_ENDING_THRESHOLD || turnCount >= 25) return "ENDING";
+    if (maxClock >= 6 || turnCount >= 15) return "ACT3";
+    if (maxClock >= 3 || turnCount >= 5) return "ACT2";
     return "ACT1";
 }
 

@@ -361,7 +361,7 @@ body {
 
 .label {
   display: block;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-secondary);
   margin-bottom: 6px;
@@ -1498,7 +1498,7 @@ body {
   color: #c0c8d0;
   text-align: center;
   padding: 0 24px;
-  padding-bottom: 30px;
+  padding-bottom: 38px;
   line-height: 1.8;
   opacity: 0;
   filter: blur(8px);
