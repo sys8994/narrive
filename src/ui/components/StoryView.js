@@ -58,6 +58,7 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
   // 1. Remove turns that are NOT in the current active path (e.g. user rolled back)
   const existingTurns = Array.from(container.querySelectorAll('.story-turn'));
   let syncIndex = 0;
+  let lastLocation = null;
 
   for (let i = 0; i < existingTurns.length; i++) {
     const turnEl = existingTurns[i];
@@ -67,8 +68,8 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
       syncIndex = i + 1; // It matches. Keep it.
 
       // Keep past options visible, but update their selected state to match the current tree truth
-      const node = session.nodesById[nodeId];
       if (node) {
+        lastLocation = node.stateSnapshot?.location;
         // Clear any leftover loading states
         turnEl.querySelectorAll('.option-btn').forEach(btn => {
           btn.disabled = false;
@@ -157,8 +158,13 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
 
     const turnLabel = node.depth === 0 ? 'Intro' : `Page #${node.depth}`;
     const title = node.meta?.title || '진행';
-    const locationStr = (node.stateSnapshot?.location) ? ` @ ${node.stateSnapshot.location}` : '';
+    const currentLocation = node.stateSnapshot?.location;
+    const hasLocationChanged = (currentLocation && currentLocation !== lastLocation);
+    const locationStr = hasLocationChanged ? ` @ ${currentLocation}` : '';
     const headerText = `${turnLabel}. ${title}${locationStr}`;
+
+    // Update lastLocation for next turn
+    lastLocation = currentLocation;
 
     // --- Handling Options & Sequential Flow ---
     if (shouldStream) {
