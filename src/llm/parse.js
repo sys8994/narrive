@@ -48,6 +48,9 @@ export function safeParseJSON(raw) {
         // Attempt 4: remove trailing commas before } or ]
         cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
 
+        // Attempt 5: Fix unquoted keys
+        cleaned = cleaned.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
+
         try {
             return { ok: true, data: JSON.parse(cleaned) };
         } catch (e) {

@@ -214,7 +214,7 @@ function handleNewGame() {
     renderTreeNav({ container: els.treeContent, session: null, onNodeClick: () => { } });
 }
 
-async function handleSetupComplete({ title, publicWorld, hiddenPlot, openingText, entryLabel, initialThemeColor, climaxThemeColor, accentColor, worldSchema }) {
+async function handleSetupComplete({ title, publicWorld, hiddenPlot, openingText, entryLabel, initialThemeColor, climaxThemeColor, accentColor, worldSchema, storyLength }) {
     const settings = getSettings();
 
     // Create session
@@ -230,6 +230,7 @@ async function handleSetupComplete({ title, publicWorld, hiddenPlot, openingText
         model: settings.model,
         temperature: settings.temperature,
         worldSchema,
+        storyLength,
     });
 
 
@@ -273,10 +274,10 @@ async function handleDeleteSession(sessionId) {
     await sessionManager.deleteSession(sessionId);
     showToast('세션이 삭제되었습니다.', 'info');
 
-    if (store.getState().activeSessionId === sessionId) {
+    const state = store.getState();
+    if (state.activeSessionId === sessionId || state.appState === 'home') {
         handleHome();
     }
-
 
     await refreshSaveList();
 }

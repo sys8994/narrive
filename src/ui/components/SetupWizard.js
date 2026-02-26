@@ -181,6 +181,19 @@ export function renderSetupWizard({ container, onComplete, onCancel }) {
 
     loadingManager.stopLoading("핵심 단서들을 포착했습니다.");
     currentSchema = result.data;
+
+    // [New] Manual injection of Story Length question
+    if (currentSchema && Array.isArray(currentSchema.questions)) {
+      currentSchema.questions.push({
+        id: "storyLength",
+        category: "vibe",
+        label: "이 모험의 예상 플레이 분량을 선택해주세요.",
+        type: "select",
+        options: ["단편 (빠르고 강렬한 전개)", "중편 (표준적인 볼륨)", "장편 (깊고 방대한 서사)"],
+        required: true
+      });
+    }
+
     accumulatedValues = {};
     showStep2('vibe');
   }
@@ -239,7 +252,11 @@ export function renderSetupWizard({ container, onComplete, onCancel }) {
     const vibeCtx = accumulatedValues.vibe || currentSchema.title || "미지의 모험";
     loadingManager.startLoading('p2_generate', { theme: vibeCtx });
 
-    const result = await callPrompt2(userBackground, accumulatedValues);
+    // Extract storyLength value
+    const rawLength = accumulatedValues.storyLength || '중편';
+    const storyLength = rawLength.split(' ')[0]; // Extract "단편", "중편", "장편"
+
+    const result = await callPrompt2(userBackground, accumulatedValues, storyLength);
     if (!result.ok) {
       loadingManager.stopLoading("운명의 실을 잇는 데 실패했습니다.");
       showError(result.error || 'LLM 호출 실패', () => showStep2('situation'));
@@ -258,6 +275,7 @@ export function renderSetupWizard({ container, onComplete, onCancel }) {
       climaxThemeColor: data.climaxThemeColor || '#000000',
       accentColor: data.accentColor || '#7aa2ff',
       worldSchema: data.worldSchema || null,
+      storyLength, // Pass to App.js
     });
   }
 

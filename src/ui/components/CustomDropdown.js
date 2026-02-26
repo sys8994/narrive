@@ -32,9 +32,26 @@ export function renderCustomDropdown(parent, { options, initialValue, onChange }
 
     function positionOptions() {
         const rect = trigger.getBoundingClientRect();
-        optionsList.style.top = `${rect.bottom + 3}px`;   // 3px gap
+        const listHeight = optionsList.offsetHeight || (options.length * 40); // estimate if not yet rendered
+        const windowHeight = window.innerHeight;
+
+        // Horizontal
         optionsList.style.left = `${rect.left}px`;
         optionsList.style.width = `${rect.width}px`;
+
+        // Vertical boundary check
+        const spaceBelow = windowHeight - rect.bottom;
+        const needsFlip = spaceBelow < listHeight + 10; // 10px buffer
+
+        if (needsFlip) {
+            optionsList.style.top = 'auto';
+            optionsList.style.bottom = `${windowHeight - rect.top + 3}px`;
+            optionsList.classList.add('custom-dropdown__options--flipped');
+        } else {
+            optionsList.style.top = `${rect.bottom + 3}px`;
+            optionsList.style.bottom = 'auto';
+            optionsList.classList.remove('custom-dropdown__options--flipped');
+        }
     }
 
     function buildOptions() {
@@ -73,18 +90,19 @@ export function renderCustomDropdown(parent, { options, initialValue, onChange }
         // Close on any click outside the options list
         setTimeout(() => {
             document.addEventListener('mousedown', onOutsideClick);
-            // window.addEventListener('scroll', closeDropdown, { passive: true, capture: true });
+            window.addEventListener('scroll', closeDropdown, { passive: true });
             window.addEventListener('resize', closeDropdown);
         }, 10);
     }
 
     function closeDropdown() {
+        console.log('close!!!', isOpen)
         if (!isOpen) return;
         isOpen = false;
         optionsList.classList.remove('custom-dropdown__options--open');
         trigger.classList.remove('custom-dropdown__trigger--open');
         document.removeEventListener('mousedown', onOutsideClick);
-        // window.removeEventListener('scroll', closeDropdown, { capture: true });
+        window.removeEventListener('scroll', closeDropdown);
         window.removeEventListener('resize', closeDropdown);
     }
 

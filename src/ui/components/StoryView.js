@@ -128,10 +128,12 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
     const stateText = `[Turn ${node.depth}] (${phaseLabel})\n--- NODE STATE ---\nLocation: ${state.location || 'N/A'}\nClocks: Win(${clocks.win}), Lose(${clocks.lose})\n--- LIVE STATE ---\nLocation: ${liveState.location || 'N/A'}\nClocks: Win(${liveClocks.win}), Lose(${liveClocks.lose})\nLogic: ${node.logicalReasoning || 'N/A'}`;
 
     const debugEl = document.createElement('div');
-    debugEl.className = 'debug-state-trigger tooltip';
-    debugEl.dataset.tooltip = stateText;
-    debugEl.style.cssText = 'font-size: 11px; opacity: 0.4; cursor: help; border: 1px solid currentColor; padding: 2px 6px; border-radius: 4px;';
+    debugEl.className = 'debug-state-trigger';
+    debugEl.style.cssText = 'font-size: 11px; opacity: 0.4; cursor: pointer; border: 1px solid currentColor; padding: 2px 6px; border-radius: 4px;';
     debugEl.textContent = 'debug';
+    debugEl.addEventListener('click', () => {
+      openDebugModal(stateText);
+    });
     headerEl.appendChild(debugEl);
 
     // Standard turn setup
@@ -524,9 +526,9 @@ function buildOptions(optList, node, session, onOptionSelect, instant) {
     if (!options.find(o => o.id === 'start')) {
       options.unshift({ id: 'start', text: session?.synopsis?.entryLabel || '모험을 시작합니다.' });
     }
-    if (!options.find(o => o.id === 'new_start')) {
-      options.push({ id: 'new_start', text: '새 모험 시작' });
-    }
+    // if (!options.find(o => o.id === 'new_start')) {
+    //   options.push({ id: 'new_start', text: '새 모험 시작' });
+    // }
   }
 
   if (options.length === 0) return;
@@ -684,6 +686,38 @@ function openActionModal(onConfirm) {
 
   // Small delay to ensure autofocus works on next-tick after DOM insertion
   setTimeout(() => input.focus(), 50);
+}
+
+/**
+ * Open a modal to show debug state information.
+ */
+function openDebugModal(content) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.style.width = '500px';
+
+  modal.innerHTML = `
+    <div class="modal__header">Debug State Information</div>
+    <div class="modal__body" style="margin-bottom: 20px;">
+      <pre style="background: var(--bg-tertiary); padding: 16px; border-radius: var(--radius-sm); font-size: 12px; white-space: pre-wrap; word-break: break-all; color: var(--text-primary); border: 1px solid var(--border);">${escapeHTML(content)}</pre>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn-primary btn-close">닫기</button>
+    </div>
+  `;
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  const closeBtn = modal.querySelector('.btn-close');
+  const close = () => overlay.remove();
+
+  closeBtn.addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); }, { once: true });
 }
 
 /**

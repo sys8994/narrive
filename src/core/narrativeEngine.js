@@ -15,21 +15,41 @@
  * @param {Object} clocks 
  * @returns {string}
  */
-export const HARD_ENDING_THRESHOLD = 9;
+/**
+ * Returns the hard ending threshold for Clocks.
+ */
+export function getHardEndingThreshold(storyLength = '중편') {
+    const thresholds = {
+        '단편': 6,
+        '중편': 10,
+        '장편': 15
+    };
+    return thresholds[storyLength] || thresholds['중편'];
+}
 
 /**
  * Returns a machine-readable key for the current narrative phase.
  */
-export function getNarrativePhaseKey(turnCount, clocks = {}) {
+export function getNarrativePhaseKey(turnCount, clocks = {}, storyLength = '중편') {
     const maxClock = Math.max(clocks.win || 0, clocks.lose || 0);
-    if (maxClock >= HARD_ENDING_THRESHOLD || turnCount >= 25) return "ENDING";
-    if (maxClock >= 6 || turnCount >= 15) return "ACT3";
-    if (maxClock >= 3 || turnCount >= 5) return "ACT2";
+
+    // Thresholds based on storyLength
+    const thresholds = {
+        '단편': { resolution: { clock: 6, turn: 10 }, act3: { clock: 4, turn: 7 }, act2: { clock: 2, turn: 3 } },
+        '중편': { resolution: { clock: 10, turn: 20 }, act3: { clock: 7, turn: 14 }, act2: { clock: 3, turn: 5 } },
+        '장편': { resolution: { clock: 15, turn: 35 }, act3: { clock: 10, turn: 22 }, act2: { clock: 4, turn: 7 } }
+    };
+
+    const t = thresholds[storyLength] || thresholds['중편'];
+
+    if (maxClock >= t.resolution.clock || turnCount >= t.resolution.turn) return "ENDING";
+    if (maxClock >= t.act3.clock || turnCount >= t.act3.turn) return "ACT3";
+    if (maxClock >= t.act2.clock || turnCount >= t.act2.turn) return "ACT2";
     return "ACT1";
 }
 
-export function getNarrativePhaseLabel(turnCount, clocks = {}) {
-    const key = getNarrativePhaseKey(turnCount, clocks);
+export function getNarrativePhaseLabel(turnCount, clocks = {}, storyLength = '중편') {
+    const key = getNarrativePhaseKey(turnCount, clocks, storyLength);
     const labels = {
         ACT1: "ACT 1 (발단)",
         ACT2: "ACT 2 (전개)",
@@ -43,10 +63,11 @@ export function getNarrativePhaseLabel(turnCount, clocks = {}) {
  * Returns the narrative directive based on current session progress.
  * @param {number} turnCount 
  * @param {Object} clocks — { win, lose }
+ * @param {string} storyLength
  * @returns {string} directive string
  */
-export function getNarrativePhaseDirective(turnCount, clocks = {}) {
-    const label = getNarrativePhaseLabel(turnCount, clocks);
+export function getNarrativePhaseDirective(turnCount, clocks = {}, storyLength = '중편') {
+    const label = getNarrativePhaseLabel(turnCount, clocks, storyLength);
 
     if (label.startsWith("ACT 4")) {
         return `[PHASE: ${label}]

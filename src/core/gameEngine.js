@@ -13,7 +13,7 @@ import { generateId } from './id.js';
 import { now } from './time.js';
 import * as tree from './treeEngine.js';
 import { callPrompt3 } from '../llm/prompts.js';
-import { HARD_ENDING_THRESHOLD } from './narrativeEngine.js';
+import { getHardEndingThreshold } from './narrativeEngine.js';
 
 // Track in-flight prefetch promises to avoid redundant LLM calls
 // Map<"nodeId:optionId", Promise<void>>
@@ -53,7 +53,7 @@ export function createInitialState() {
  * @param {string} params.entryLabel
  * @returns {Object} GameSessionBlob
  */
-export function createSession({ title, publicWorld, hiddenPlot, openingText, entryLabel, initialThemeColor, climaxThemeColor, accentColor, model, temperature, worldSchema }) {
+export function createSession({ title, publicWorld, hiddenPlot, openingText, entryLabel, initialThemeColor, climaxThemeColor, accentColor, model, temperature, worldSchema, storyLength }) {
     const sessionId = generateId();
     const rootId = generateId();
     const timestamp = now();
@@ -82,7 +82,7 @@ export function createSession({ title, publicWorld, hiddenPlot, openingText, ent
             climaxThemeColor: climaxThemeColor || '#000000',
             accentColor: accentColor || '#ff9e80',
         },
-        synopsis: { publicWorld, hiddenPlot, openingText, entryLabel },
+        synopsis: { publicWorld, hiddenPlot, openingText, entryLabel, storyLength: storyLength || '중편' },
         worldSchema: worldSchema || null,
 
         llm: { model, temperature },
@@ -108,7 +108,7 @@ export async function generateInitialOptions(session) {
     const rootNode = session.nodesById[session.rootNodeId];
 
     // Initialize state from LLM (though usually first turn just sets options)
-    const newState = applyStatePatch(session.gameState, data);
+    const newState = applyStatePatch(session.gameState, data, session.synopsis?.storyLength);
 
     const newNode = {
         id: generateId(),
@@ -129,8 +129,7 @@ export async function generateInitialOptions(session) {
     }
 
     rootNode.options = [
-        { id: 'start', text: session.synopsis.entryLabel || '모험을 시작합니다.' },
-        { id: 'new_start', text: '새 모험 시작' }
+        { id: 'start', text: session.synopsis.entryLabel || '모험을 시작합니다.' }
     ];
     tree.addNode(session, newNode);
     tree.addEdge(session, rootNode.id, 'start', newNode.id);
@@ -180,7 +179,7 @@ export async function prefetchOption(session, nodeId, optionId) {
             if (!result.ok) return;
 
             const data = result.data;
-            const newState = applyStatePatch(parentState, data);
+            const newState = applyStatePatch(parentState, data, session.synopsis?.storyLength);
 
             const newNode = {
                 id: generateId(),
@@ -283,7 +282,7 @@ export async function progressTurn(session, optionId, customText) {
 
     // Build new state using PATCH logic
     const parentState = currentNode.stateSnapshot || session.gameState;
-    const newState = applyStatePatch(parentState, data);
+    const newState = applyStatePatch(parentState, data, session.synopsis?.storyLength);
 
     // Create new node
     const newNode = {
@@ -373,7 +372,7 @@ export async function prefetchAllOptions(session) {
                 }
 
                 const data = result.data;
-                const newState = applyStatePatch(parentState, data);
+                const newState = applyStatePatch(parentState, data, session.synopsis?.storyLength);
 
                 const newNode = {
                     id: generateId(),
@@ -423,9 +422,10 @@ export async function prefetchAllOptions(session) {
  * 
  * @param {Object} prevState 
  * @param {Object} responseData — can include statePatch, clockDelta, turnSummary, tensionLevel, isEnding
+ * @param {string} storyLength
  * @returns {Object} new state
  */
-export function applyStatePatch(prevState, responseData) {
+export function applyStatePatch(prevState, responseData, storyLength = '중편') {
     const patch = responseData.statePatch || {};
     const clocks = responseData.clockDelta || { track_win: 0, track_lose: 0 };
 
@@ -480,12 +480,13 @@ export function applyStatePatch(prevState, responseData) {
     newState.isEnding = responseData.isEnding || false;
 
     // 6. Hard Ending Enforcement
-    if (newState.clocks.win >= HARD_ENDING_THRESHOLD) {
+    const threshold = getHardEndingThreshold(storyLength);
+    if (newState.clocks.win >= threshold) {
         newState.isEnding = true;
         // Optionally mark the type if not already set
         if (!responseData.endingType) newState.isWinEnding = true;
     }
-    if (newState.clocks.lose >= HARD_ENDING_THRESHOLD) {
+    if (newState.clocks.lose >= threshold) {
         newState.isEnding = true;
         if (!responseData.endingType) newState.isLoseEnding = true;
     }

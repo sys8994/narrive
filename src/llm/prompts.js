@@ -104,11 +104,11 @@ CRITICAL UX POLICY (STRICT)
 Typing must be minimized.
 1) EXACTLY 8–10 questions.
 2) ZERO sliders. ZERO textarea.
-3) At least 7 MUST be type "select".
-4) Maximum 2 may be type "text" (for proper nouns only).
-5) Use "checkbox" ONLY if multiple selections are narratively meaningful.
-6) Each "select" must have 4–7 options.
-8) Options must be hyper-specific and visually evocative. (No generic labels).
+3) ALL questions MUST not be type "text" ("select" type is highly recommanded).
+4) Use "checkbox" ONLY if multiple selections are narratively meaningful.
+5) Each "select" must have 4–7 options. 
+   *(주의: "기타(직접 입력)" 또는 "상관 없음" 옵션은 시스템이 자동 추가하므로 절대 직접 생성하지 마십시오.)*
+6) Options must be hyper-specific and visually evocative. (No generic labels).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STRICT FIELD VALIDATION RULES
@@ -128,7 +128,7 @@ Before finalizing, verify:
 1) Did I use the 12 Vibe examples to create deep, thematic questions instead of trivial ones?
 2) Are situation questions concrete and immediate?
 3) Are there ZERO sliders?
-4) Are at least 7 selects present, and do they include "기타/상관없음"?
+4) Are at least 7 selects present? (DO NOT include "기타" or "상관없음")
 5) Are plot secrets protected?
 6) Is keyword grounding visible in EVERY label?
 7) Did I strictly follow the empty array/string rules for options/placeholder?
@@ -182,8 +182,15 @@ You MUST respond with ONLY a JSON object in this exact schema:
 
 // ─── Prompt #2: Form Answers → Synopsis + Opening + Theme ──────────
 
-export async function callPrompt2(userBackground, formAnswers) {
+export async function callPrompt2(userBackground, formAnswers, storyLength = '중편') {
   const answersText = Object.entries(formAnswers).map(([id, val]) => `${id}: ${val}`).join('\n');
+
+  // 분량에 따른 가이드라인 동적 생성
+  const lengthGuidance = storyLength === '단편'
+    ? "[스토리 분량: 단편 (Short)] 빠르고 강렬한 전개. Locations 2~3개, NPCs 1~2명, Items 2~3개로 제한하여 밀도를 높이십시오."
+    : storyLength === '장편'
+      ? "[스토리 분량: 장편 (Long)] 깊고 방대한 서사. Locations 5개 이상, NPCs 4명 이상, Items 5개 이상으로 다채로운 세계를 구성하십시오."
+      : "[스토리 분량: 중편 (Medium)] 표준적인 볼륨. Locations 3~4개, NPCs 2~3명, Items 3~4개로 균형 잡힌 세계를 구성하십시오.";
 
   const messages = [
     {
@@ -193,6 +200,7 @@ export async function callPrompt2(userBackground, formAnswers) {
 Input Data:
 1) The user's original background concept.
 2) The user's specific answers to the "Taste Lens" (Vibe) and "Starting Premise" (Situation).
+3) Target Story Length: ${storyLength}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CORE PHILOSOPHY
@@ -227,6 +235,7 @@ PART B: 서사 전개 프레임워크 (The Progression Framework)
 3. ENGINE SCHEMA (worldSchema - STRICT INTEGRITY)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 GENERATE distinct, memorable Korean proper nouns for everything. NO generic placeholders.
+${lengthGuidance}
 - protagonist: MUST include "startingLocationId" which matches exactly one location ID from the locations array.
 - locations (Min 4): Form a logical map. "connectedTo" MUST ONLY contain IDs that actually exist in this array.
 - npcs (Min 3): Each needs a "motive" (public behavior) and a "secret" (hidden truth tied to the Hidden Plot).
@@ -309,7 +318,8 @@ function buildStoryContext(session, maxRecentNodes = 3) {
       ? (node.options.find((o) => o.id === node.selectedOptionId)?.text || '')
       : 'None (Start)';
     if (isRecent) {
-      contextString += `[Turn ${node.depth}] (FULL)\nText: ${node.text}\nAction Taken: ${selectedOpt}\n\n`;
+      const allOptions = node.options.map(o => `- ${o.text}`).join('\n');
+      contextString += `[Turn ${node.depth}] (FULL)\nText: ${node.text}\nOptions Provided:\n${allOptions}\nAction Taken: ${selectedOpt}\n\n`;
     } else {
       const summary = node.turnSummary || node.text.substring(0, 50) + "...";
       contextString += `[Turn ${node.depth}] (SUMMARY)\nSummary: ${summary}\nAction Taken: ${selectedOpt}\n\n`;
@@ -403,29 +413,29 @@ export async function callPrompt3(session, selectedOption) {
   const clocks = state.clocks || { win: 0, lose: 0 };
   const maxClock = Math.max(clocks.win, clocks.lose);
 
-  // ─── 동적 페이즈 판별 로직 ───
-  let phaseMode = "ACT1";
+  // ─── 분량(Length) 기반 동적 페이즈 판별 로직 ───
+  // 세션 정보에서 storyLength를 가져오거나 기본값 사용
+  const length = session.synopsis?.storyLength || '중편';
+
+  // narrativeEngine으로 페이즈 판별 위임
+  const phaseKey = getNarrativePhaseKey(state.turnCount, clocks, length);
+
+  let phaseMode = phaseKey;
   let currentPhasePrompt = PHASE_ACT1;
 
   if (state.flags?.epilogue_ready) {
     phaseMode = "EPILOGUE";
     currentPhasePrompt = PHASE_EPILOGUE;
-  } else if (maxClock >= 10 || state.turnCount >= 20) {
+  } else if (phaseMode === "ENDING") {
     phaseMode = "RESOLUTION";
     currentPhasePrompt = PHASE_RESOLUTION;
-  } else if (maxClock >= 7 || state.turnCount >= 14) {
-    phaseMode = "ACT3";
+  } else if (phaseMode === "ACT3") {
     currentPhasePrompt = PHASE_ACT3;
-  } else if (maxClock >= 3 || state.turnCount >= 5) {
-    phaseMode = "ACT2";
+  } else if (phaseMode === "ACT2") {
     currentPhasePrompt = PHASE_ACT2;
   }
 
-  const playerAction = selectedOption
-    ? `The player chose: "${selectedOption.text}"`
-    : 'This is TURN 1 (The Drop-in). The macro prologue has just ended. Now, drop the camera directly into the protagonist\'s eyes. Explicitly describe their specific \'role\', their \'limitation\', the immediate sensory details of the current location, and the immediate physical crisis/threat they are facing right now. Transition the player from the world-building phase into visceral, present-tense reality.';
-
-  // ─── 안티그래비티가 구현할 함수 호출 (동적 스키마 주입) ───
+  const playerAction = selectedOption ? selectedOption.text : (session.synopsis?.entryLabel || "모험 시작");
   const dynamicSchemaContext = buildDynamicSchemaContext(session);
 
   let dynamicRules = "";
@@ -449,6 +459,7 @@ NORMAL PLAY LOGIC: PROGRESS & ANTI-STALLING
 ────────────────────────────────────────
 CHOICE SPECIFICITY & DIVERSITY (CRITICAL)
 ────────────────────────────────────────
+- OPTION QUANTITY: You MUST generate EXACTLY 2 options to save tokens. Only generate 3 if a situation absolutely demands a highly distinct third path. NEVER generate more than 3.
 - FORBIDDEN GENERIC VERBS: NEVER use "조사한다", "검토한다", "알아본다", "대화한다", "확인한다".
 - TEXT ↔ OPTION LOCK: Every object/NPC in an option MUST be explicitly described in the text first.
 - DIVERSITY: Vary formats (Physical action, Dialogue/Stance, Deduction). Choosing A MUST sacrifice B.
@@ -482,7 +493,6 @@ ${dynamicSchemaContext}
 [World Vibe]: ${session.synopsis.publicWorld || 'N/A'}
 [Hidden Plot]: ${session.synopsis.hiddenPlot || 'N/A'}
 [Story History]:\n${storyContext}
-[Current State]: ${JSON.stringify(state)}
 
 - Fragmentation of Truth: Never reveal the full [사건의 전말] at once. Reveal fragments ONLY when clues are investigated.
 - Invisible Hand Options: In ACT1/2, ensure at least ONE option subtly hooks the player toward a clue in the Hidden Plot without being meta.
@@ -506,7 +516,7 @@ NARRATIVE PERSPECTIVE & WRITING STYLE
 OUTPUT SCHEMA (STRICT JSON ONLY)
 ────────────────────────────────────────
 {
-  "logicalReasoning": "string (1-3 sentences explaining causality)",
+  "logicalReasoning": "string (2-3 sentences explaining causality)",
   "text": "string (Paragraphs of story. 주어 생략. Dialogue uses << >>)",
   "turnSummary": "string (1-sentence concise Korean summary of this turn)",
   "statePatch": {
@@ -530,7 +540,7 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
     { role: 'system', content: systemPrompt },
     {
       role: 'user',
-      content: `## Player Action\n${playerAction}\n\n## Current Inventory\n${state.inventory.join(', ') || 'None'}\n\n## Current Flags\n${JSON.stringify(state.flags || {})}`
+      content: `## Player Action\n${playerAction}\n\n## Current Game State\n${JSON.stringify(state)}`
     }
   ];
 
