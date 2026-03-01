@@ -5,7 +5,7 @@
  * DB: "keyval-store", version 1, single object store "keyval"
  */
 
-const DB_NAME = 'keyval-store';
+const DB_NAME = 'narrive';
 const STORE_NAME = 'keyval';
 const DB_VERSION = 1;
 

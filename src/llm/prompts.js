@@ -317,12 +317,13 @@ function buildStoryContext(session, maxRecentNodes = 3) {
     const selectedOpt = node.selectedOptionId
       ? (node.options.find((o) => o.id === node.selectedOptionId)?.text || '')
       : 'None (Start)';
+    const turnLabel = node.depth === 0 ? "Prologue/Background" : node.depth;
     if (isRecent) {
       const allOptions = node.options.map(o => `- ${o.text}`).join('\n');
-      contextString += `[Turn ${node.depth}] (FULL)\nText: ${node.text}\nOptions Provided:\n${allOptions}\nAction Taken: ${selectedOpt}\n\n`;
+      contextString += `[Turn ${turnLabel}] (FULL)\nText: ${node.text}\nOptions Provided:\n${allOptions}\nAction Taken: ${selectedOpt}\n\n`;
     } else {
       const summary = node.turnSummary || node.text.substring(0, 50) + "...";
-      contextString += `[Turn ${node.depth}] (SUMMARY)\nSummary: ${summary}\nAction Taken: ${selectedOpt}\n\n`;
+      contextString += `[Turn ${turnLabel}] (SUMMARY)\nSummary: ${summary}\nAction Taken: ${selectedOpt}\n\n`;
     }
   });
   return contextString;
@@ -358,10 +359,10 @@ function buildDynamicSchemaContext(session) {
   const inventoryString = `[INVENTORY/KEY ITEMS HELD]\n- ${gameState.inventory.length > 0 ? gameState.inventory.join(', ') : 'Empty.'}`;
 
   // 5. Active NPCs (Randomly pick 1)
-  let npcString = "[ACTIVE NPC POTENTIAL]\n- None available.";
+  let npcString = "[ACTIVE NPC POTENTIAL]\n- (중요) 설정된 NPC가 없더라도, 현재 상황에 맞는 새로운 인물(행인, 적, 조력자 등)을 세계관에 맞게 즉석에서 창조하여 유저의 서사에 개입시키십시오. 주인공이 혼자 돌아다니며 독백하거나 탐색만 하게 두지 마십시오. 항상 타인 또는 외부 요소와의 활발한 상호작용이 일어나야 합니다.";
   if (worldSchema.npcs && worldSchema.npcs.length > 0) {
     const randomNpc = worldSchema.npcs[Math.floor(Math.random() * worldSchema.npcs.length)];
-    npcString = `[ACTIVE NPC POTENTIAL (Consider involving them)]\n- ${randomNpc.name} (${randomNpc.role}): Public Motive is '${randomNpc.motive}'`;
+    npcString = `[ACTIVE NPC POTENTIAL (Consider involving them)]\n- ${randomNpc.name} (${randomNpc.role}): Public Motive is '${randomNpc.motive}'\n- (중요) 이 NPC 또는 상황에 맞는 새로운 주변 인물들을 서사에 적극 개입시키십시오. 주인공 혼자 탐색이나 독백으로 시간을 보내게 하지 말고 대화와 상호작용을 유도하십시오.`;
   }
 
   return `${locString}\n\n${exitsString}\n\n${itemsString}\n\n${inventoryString}\n\n${npcString}`;
@@ -369,23 +370,30 @@ function buildDynamicSchemaContext(session) {
 
 const PHASE_ACT1 = `
 [PHASE: ACT 1 - 발단 (Introduction & Exposition)]
-- 톤 앤 매너: 차분하고 신비로우며, 긴장감은 아직 수면 아래에 있습니다.
-- 서술 목표: 세계관의 냄새, 질감, 주인공의 상태를 깊이 있게 각인시키십시오. 스토리를 서둘러 전개하지 마십시오.
-- 선택지 룰: 공간을 탐색하고, 상황을 파악하며, NPC를 관찰하는 '정보 수집' 위주의 구체적 선택지를 제공하십시오.
+- 서사 템포: 유유하고 상세한 호흡. 긴장감은 아직 수면 아래에 있습니다.
+- 서술 목표: 일상적이거나 평온해 보이지만 묘한 이질감이 느껴지는 분위기를 조성하십시오. 혼자 방치되어 공간만 관찰하게 두지 말고, 누군가와의 만남이나 가벼운 사건의 발생 등 본격적인 이야기의 '시작'을 알리는 동적인 이벤트를 전개하십시오.
+- 선택지 방향: 타인(또는 주요 사물)과 직접적으로 대화하거나 개입하는 등, 사회적 상호작용과 구체적인 행동을 이끌어내는 선택지를 제시하십시오. 단순 정보 수집 목적의 선택지는 지양합니다.
+`;
+
+const PHASE_ACT1_INITIAL = `
+[PHASE: ACT 1 (START) - 첫 번째 전개 (Initial Action)]
+- 상황: 프롤로그(Turn 0)는 이미 끝났습니다. 유저는 이제 게임의 첫 번째 행동을 시작한 상태입니다.
+- 서술 목표: 배경 설명을 장황하게 반복(Echo)하지 마십시오. 유저의 첫 번째 선택에 대한 "즉각적이고 물리적인 결과"와 타인의 반응, 들이닥친 사건 등 "현재 진행형의 감각 정보"를 제공하여 능동적인 씬(Scene)을 첫 문장부터 시작하십시오.
+- 금기 사항: 프롤로그의 문장을 복붙하거나, "문명은 멸망했다...", "당신은 눈을 떴다..." 같은 고립된 고독한 분위기로만 몰아가는 것은 치명적인 오류입니다.
 `;
 
 const PHASE_ACT2 = `
-[PHASE: ACT 2 - 전개 (Rising Action & Investigation)]
-- 톤 앤 매너: 갈등이 수면 위로 드러나며, 세계가 유저를 적대하기 시작합니다.
-- 서술 목표: P2에 설정된 [단서의 조각들]을 추적하도록 유도하십시오. 유저의 실수나 방황에 가차 없이 페널티(부상, 아이템 상실)를 부여하십시오.
-- 선택지 룰: '위험을 감수하고 진실에 다가갈 것인가' 아니면 '안전을 택하고 기회를 날릴 것인가'를 강요하는 갈등형 선택지를 제공하십시오.
+[PHASE: ACT 2 - 전개 (Rising Action & Conflict)]
+- 서사 템포: 호흡이 점차 빨라지고, 갈등과 위기가 본격적으로 표면화됩니다.
+- 서술 목표: 유저의 목적 달성을 가로막는 물리적, 사회적 장애물(적대자, 배신자, 돌발적인 사고)을 가차 없이 등장시키십시오. 정적인 추리나 정보 수집이 아니라, 살아 숨쉬는 인물 간의 갈등이나 구체적인 위기 상황 속으로 유저를 던져 넣으십시오.
+- 선택지 방향: 희생이나 위험을 감수하고(Risk) 장애물을 정면 돌파할 것인지, 또 다른 기회비용을 내고 우회할 것인지를 강요하는 갈등형 선택지를 제시하십시오.
 `;
 
 const PHASE_ACT3 = `
 [PHASE: ACT 3 - 절정 (Climax)]
-- 톤 앤 매너: 호흡이 짧고, 폭력적이며, 극도로 긴박합니다.
-- 서술 목표: 흑막의 실체나 치명적인 위협이 직접적으로 들이닥친 상황입니다. 평화로운 해결책은 없습니다.
-- 선택지 룰: 목숨을 걸거나 무언가를 영구적으로 희생해야만 하는, 극단적이고 치명적인 선택지 2개를 강제하십시오.
+- 서사 템포: 서술의 호흡이 가장 짧고 격정적이며, 폭력적이고 숨막히는 긴장감을 유지합니다.
+- 서술 목표: 이야기의 모든 갈등이 한 공간에서 폭발하는 최후의 위기 상황입니다. 돌아갈 길은 없으며, 가장 위협적인 존재와의 직접적이고 최후의 대면을 스펙터클하게 서술하십시오.
+- 선택지 방향: 목숨을 걸거나 스스로의 일부를 영구히 희생해야만 하는, 극단적이고 치명적인 선택지 2개를 강제하십시오.
 `;
 
 const PHASE_RESOLUTION = `
@@ -433,6 +441,16 @@ export async function callPrompt3(session, selectedOption) {
     currentPhasePrompt = PHASE_ACT3;
   } else if (phaseMode === "ACT2") {
     currentPhasePrompt = PHASE_ACT2;
+  } else if (state.turnCount === 0) {
+    currentPhasePrompt = PHASE_ACT1_INITIAL;
+  }
+
+  // 동적 텍스트 분량 조절
+  let lengthDirective = "";
+  if (phaseMode === "EPILOGUE" || phaseMode === "RESOLUTION" || phaseMode === "ACT3") {
+    lengthDirective = "최후의 순간이거나 엔딩에 다다른 만큼, 밀도 있고 호흡이 긴 문장으로 2~4문단 분량(최소 300자 이상)을 풍부하게 서술하십시오.";
+  } else {
+    lengthDirective = "상황의 몰입을 돕기 위해 시각/청각적 묘사를 적극 활용하여 안정적인 1~3문단 분량(최소 200자 이상)을 서술하십시오. 너무 짧게 쓰지 마십시오.";
   }
 
   const playerAction = selectedOption ? selectedOption.text : (session.synopsis?.entryLabel || "모험 시작");
@@ -452,17 +470,16 @@ ENDING LOGIC (OVERRIDE ALL OTHER RULES)
 ────────────────────────────────────────
 NORMAL PLAY LOGIC: PROGRESS & ANTI-STALLING
 ────────────────────────────────────────
-- \`track_win\`: +1 if the player takes a meaningful risk, discovers a clue, or progresses the plot.
-- \`track_lose\`: +1 if the player wastes time, repeats an action, or fails a check.
-- ANTI-STALLING: If the player repeats the same intent or stalls, trigger a logical catastrophic consequence and set \`track_lose\` = 1.
+- \`track_win\`: +1 if the player takes a meaningful risk, engages in deep social interaction, or boldly overcomes an obstacle.
+- \`track_lose\`: +1 if the player wastes time, avoids interaction, repeats passive observations, or fails a check.
+- ANTI-STALLING: If the player stalls by just "looking around" or "thinking", immediately force an active event (someone approaches, an attack happens). Set \`track_lose\` = 1.
 
 ────────────────────────────────────────
 CHOICE SPECIFICITY & DIVERSITY (CRITICAL)
 ────────────────────────────────────────
 - OPTION QUANTITY: You MUST generate EXACTLY 2 options to save tokens. Only generate 3 if a situation absolutely demands a highly distinct third path. NEVER generate more than 3.
-- FORBIDDEN GENERIC VERBS: NEVER use "조사한다", "검토한다", "알아본다", "대화한다", "확인한다".
-- TEXT ↔ OPTION LOCK: Every object/NPC in an option MUST be explicitly described in the text first.
-- DIVERSITY: Vary formats (Physical action, Dialogue/Stance, Deduction). Choosing A MUST sacrifice B.
+- FORBIDDEN PASSIVE VERBS: NEVER use "주변을 둘러본다", "조사한다", "단서를 찾는다", "생각해본다". Force direct action or dialogue.
+- DIVERSITY: At least ONE option MUST involve Dialogue or Social/Physical confrontation with another entity if present. Vary approaches (Bribe vs Attack, Persuade vs Sneak).
 `;
   }
 
@@ -473,6 +490,7 @@ You are not merely writing prose. You are running a strict narrative simulation 
 0. CURRENT NARRATIVE PHASE (ABSOLUTE PRIORITY)
 ────────────────────────────────────────
 ${currentPhasePrompt}
+${lengthDirective}
 
 ────────────────────────────────────────
 1. MANDATORY SCHEMA INJECTION & INTERACTION RULES
@@ -494,14 +512,16 @@ ${dynamicSchemaContext}
 [Hidden Plot]: ${session.synopsis.hiddenPlot || 'N/A'}
 [Story History]:\n${storyContext}
 
-- Fragmentation of Truth: Never reveal the full [사건의 전말] at once. Reveal fragments ONLY when clues are investigated.
-- Invisible Hand Options: In ACT1/2, ensure at least ONE option subtly hooks the player toward a clue in the Hidden Plot without being meta.
+- Fragmentation of Truth: Never reveal the full [사건의 전말] at once. Reveal fragments ONLY through dynamic events, conflicts, or dialogue, NOT passive clue-finding.
+- Invisible Hand Options: In ACT1/2, ensure at least ONE option subtly pulls the player into a social interaction or conflict related to the Hidden Plot.
 
 ────────────────────────────────────────
 3. STATE INTEGRITY (PATCH-BASED)
 ────────────────────────────────────────
 Evaluate the outcome logically. Explain it in \`logicalReasoning\` based on phase/flags/inventory.
 - PATCH-BASED UPDATE: Only output the DELTA in \`statePatch\`. NEVER wipe the inventory or flags array. Preserve unmentioned state implicitly.
+
+- ANTI-ECHO (CRITICAL): NEVER repeat, paraphrase, or summarize previous \`Text\` from [Story History]. Your \`text\` output must ONLY cover the NEW events that occur as a direct result of the \`Player Action\`.
 
 ${dynamicRules}
 
@@ -517,7 +537,7 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
 ────────────────────────────────────────
 {
   "logicalReasoning": "string (2-3 sentences explaining causality)",
-  "text": "string (Paragraphs of story. 주어 생략. Dialogue uses << >>)",
+  "text": "string (Paragraphs of story covering ONLY new events. [TEXT VOLUME] 지시를 반드시 준수할 것. 이전 턴의 내용을 절대 반복/요약하지 말고 직후의 맹렬한 전개만 서술. 주어 생략. Dialogue uses << >>. ${lengthDirective})",
   "turnSummary": "string (1-sentence concise Korean summary of this turn)",
   "statePatch": {
     "addFlags": ["string"], "removeFlags": ["string"], "addItems": ["string"], "removeItems": ["string"], "locationChange": "string or null"

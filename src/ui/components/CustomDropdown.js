@@ -96,7 +96,6 @@ export function renderCustomDropdown(parent, { options, initialValue, onChange }
     }
 
     function closeDropdown() {
-        console.log('close!!!', isOpen)
         if (!isOpen) return;
         isOpen = false;
         optionsList.classList.remove('custom-dropdown__options--open');
