@@ -138,6 +138,12 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
 
     // Standard turn setup
     if (!node.isEnding) {
+      if (node.depth === 0 && session.thumbnailBase64) {
+        const thumbContainer = document.createElement('div');
+        thumbContainer.className = 'story-prologue-thumbnail';
+        thumbContainer.innerHTML = `<img src="data:image/png;base64,${session.thumbnailBase64}" alt="Story Thumbnail" />`;
+        turnEl.appendChild(thumbContainer);
+      }
       turnEl.appendChild(headerEl);
       const textEl = document.createElement('div');
       textEl.className = 'story-text';

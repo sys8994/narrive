@@ -94,6 +94,11 @@ function renderSessionCard(session, isActive) {
 
     return `
         <div class="home-card ${isActive ? 'home-card--active' : ''}" data-session-id="${session.id}">
+            ${session.thumbnailBase64 ? `
+                <div class="home-card__thumbnail">
+                    <img src="data:image/png;base64,${session.thumbnailBase64}" alt="${escapeHTML(session.title)}" />
+                </div>
+            ` : ''}
             <div class="home-card__content">
                 <div class="home-card__title">${escapeHTML(session.title)}</div>
                 <div class="home-card__date">${date}</div>

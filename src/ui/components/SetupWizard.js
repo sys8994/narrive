@@ -256,15 +256,34 @@ export function renderSetupWizard({ container, onComplete, onCancel }) {
     const rawLength = accumulatedValues.storyLength || '중편';
     const storyLength = rawLength.split(' ')[0]; // Extract "단편", "중편", "장편"
 
-    const result = await callPrompt2(userBackground, accumulatedValues, storyLength);
-    if (!result.ok) {
+    const settings = (await import('../../llm/apiClient.js')).getSettings();
+    const imageGenEnabled = settings.generateThumbnail;
+
+    let synopsisPromise = callPrompt2(userBackground, accumulatedValues, storyLength);
+    let imagePromise = null;
+
+    if (imageGenEnabled) {
+      const { generateImagePrompt } = await import('../../llm/prompts.js');
+      const { geminiImageGeneration } = await import('../../llm/apiClient.js');
+      const imagePrompt = generateImagePrompt(userBackground, accumulatedValues);
+      imagePromise = geminiImageGeneration(imagePrompt);
+    }
+
+    const [synopsisResult, imageResult] = await Promise.all([
+      synopsisPromise,
+      imagePromise || Promise.resolve({ ok: true, base64: null })
+    ]);
+
+    if (!synopsisResult.ok) {
       loadingManager.stopLoading("운명의 실을 잇는 데 실패했습니다.");
-      showError(result.error || 'LLM 호출 실패', () => showStep2('situation'));
+      showError(synopsisResult.error || 'LLM 호출 실패', () => showStep2('situation'));
       return;
     }
 
+    const data = synopsisResult.data;
+    const thumbnailBase64 = imageResult?.ok ? imageResult.base64 : null;
+
     loadingManager.stopLoading("당신만의 이야기가 완성되었습니다.");
-    const data = result.data;
     onComplete({
       title: data.title || '새 모험',
       publicWorld: data.publicWorld || '',
@@ -275,7 +294,8 @@ export function renderSetupWizard({ container, onComplete, onCancel }) {
       climaxThemeColor: data.climaxThemeColor || '#000000',
       accentColor: data.accentColor || '#7aa2ff',
       worldSchema: data.worldSchema || null,
-      storyLength, // Pass to App.js
+      storyLength,
+      thumbnailBase64, // Pass thumbnail
     });
   }
 

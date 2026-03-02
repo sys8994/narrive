@@ -60,6 +60,16 @@ export function openSettingsModal(modalRoot, onClose) {
         </select>
       </div>
 
+      <div class="form-group" style="border-top: 1px solid var(--border); padding-top: 20px; margin-top: 20px;">
+        <label class="label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+          <input type="checkbox" id="settings-gen-thumbnail" ${settings.generateThumbnail ? 'checked' : ''} style="width: 18px; height: 18px;" />
+          <span>시나리오 썸네일 자동 생성 (Gemini 이미지 모델 사용)</span>
+        </label>
+        <p style="font-size: 12px; color: var(--text-muted); margin-top: 6px; margin-left: 28px;">
+          시나리오 생성 시 영화 포스터 스타일의 이미지를 함께 생성하여 카드와 프롤로그에 표시합니다.
+        </p>
+      </div>
+
       <div class="modal__footer">
         <button class="btn btn-secondary" id="settings-cancel">취소</button>
         <button class="btn btn-primary" id="settings-save">저장</button>
@@ -99,12 +109,11 @@ export function openSettingsModal(modalRoot, onClose) {
   // Save
   overlay.querySelector('#settings-save').addEventListener('click', () => {
     const provider = providerSelect.value;
-    const geminiApiKey = geminiInput.value.trim();
-    const geminiModel = geminiModelSelect.value;
     const openaiApiKey = openaiInput.value.trim();
     const openaiModel = openaiModelSelect.value;
+    const generateThumbnail = overlay.querySelector('#settings-gen-thumbnail').checked;
 
-    saveSettings({ provider, geminiApiKey, geminiModel, openaiApiKey, openaiModel });
+    saveSettings({ provider, geminiApiKey, geminiModel, openaiApiKey, openaiModel, generateThumbnail });
     showToast('설정이 저장되었습니다.', 'success');
     close();
   });

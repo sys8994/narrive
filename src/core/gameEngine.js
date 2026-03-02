@@ -53,7 +53,7 @@ export function createInitialState() {
  * @param {string} params.entryLabel
  * @returns {Object} GameSessionBlob
  */
-export function createSession({ title, publicWorld, hiddenPlot, openingText, entryLabel, initialThemeColor, climaxThemeColor, accentColor, model, temperature, worldSchema, storyLength }) {
+export function createSession({ title, publicWorld, hiddenPlot, openingText, entryLabel, initialThemeColor, climaxThemeColor, accentColor, model, temperature, worldSchema, storyLength, thumbnailBase64 }) {
     const sessionId = generateId();
     const rootId = generateId();
     const timestamp = now();
@@ -91,6 +91,7 @@ export function createSession({ title, publicWorld, hiddenPlot, openingText, ent
         nodesById: { [rootId]: rootNode },
         edges: [],
         gameState: { ...initialState },
+        thumbnailBase64: thumbnailBase64 || null,
     };
 }
 

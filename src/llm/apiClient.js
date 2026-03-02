@@ -15,6 +15,7 @@ const LS_KEY_API_GEMINI = 'ttg.gemini.apiKey';
 const LS_KEY_MODEL_GEMINI = 'ttg.gemini.model';
 
 const LS_KEY_TEMP = 'ttg.openai.temperature';
+const LS_KEY_GEN_THUMBNAIL = 'ttg.feature.generateThumbnail';
 
 const DEFAULT_PROV = 'gemini';
 const DEFAULT_MODEL_OPENAI = 'gpt-4o-mini';
@@ -32,6 +33,7 @@ export function getSettings() {
         openaiModel: localStorage.getItem(LS_KEY_MODEL_OPENAI) || DEFAULT_MODEL_OPENAI,
         geminiApiKey: localStorage.getItem(LS_KEY_API_GEMINI) || '',
         geminiModel: localStorage.getItem(LS_KEY_MODEL_GEMINI) || DEFAULT_MODEL_GEMINI,
+        generateThumbnail: localStorage.getItem(LS_KEY_GEN_THUMBNAIL) !== 'false', // Default true
     };
 }
 
@@ -44,6 +46,7 @@ export function saveSettings({ provider, openaiApiKey, openaiModel, geminiApiKey
     if (openaiModel !== undefined) localStorage.setItem(LS_KEY_MODEL_OPENAI, openaiModel);
     if (geminiApiKey !== undefined) localStorage.setItem(LS_KEY_API_GEMINI, geminiApiKey);
     if (geminiModel !== undefined) localStorage.setItem(LS_KEY_MODEL_GEMINI, geminiModel);
+    if (generateThumbnail !== undefined) localStorage.setItem(LS_KEY_GEN_THUMBNAIL, generateThumbnail);
 }
 
 /**
@@ -277,5 +280,67 @@ async function geminiChatCompletion(apiKey, settings, messages, options) {
             // Non-deterministic networks errors could be retried too, but let's stick to returning for now
             return { ok: false, error: `Network error: ${err.message}` };
         }
+    }
+}
+
+/**
+ * Call Gemini Imagen 3 Generation API.
+ * @param {string} prompt
+ * @returns {Promise<{ok:boolean, base64?:string, error?:string}>}
+ */
+export async function geminiImageGeneration(prompt) {
+    const settings = getSettings();
+    const apiKey = settings.geminiApiKey;
+    if (!apiKey) return { ok: false, error: "API Key (Gemini)가 필요합니다." };
+
+    // Endpoint for Imagen 3.0
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
+
+    const body = {
+        instances: [
+            { prompt }
+        ],
+        parameters: {
+            sampleCount: 1,
+            aspectRatio: "1:1",
+            outputMimeType: "image/png"
+        }
+    };
+
+    console.group('%c[Gemini Image Request]', 'color: #ff7af2; font-weight: bold');
+    console.log('Prompt:', prompt);
+    console.groupEnd();
+
+    try {
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+            const errBody = await res.text();
+            let errMsg = `Image API Error (${res.status})`;
+            try {
+                const errJson = JSON.parse(errBody);
+                errMsg = errJson.error?.message || errMsg;
+            } catch (_) { }
+            console.error('[Gemini Image Error]', errMsg);
+            return { ok: false, error: errMsg };
+        }
+
+        const data = await res.json();
+        // Imagen response structure: predictions[0].bytesBase64Encoded
+        const base64 = data.predictions?.[0]?.bytesBase64Encoded;
+
+        if (!base64) {
+            return { ok: false, error: "이미지 데이터가 응답에 포함되지 않았습니다." };
+        }
+
+        console.log('%c[Gemini Image Success]', 'color: #ff99f2; font-weight: bold');
+        return { ok: true, base64 };
+    } catch (err) {
+        console.error('[Gemini Image Network Error]', err);
+        return { ok: false, error: `Network error: ${err.message}` };
     }
 }

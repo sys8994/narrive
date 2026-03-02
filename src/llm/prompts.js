@@ -570,3 +570,19 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
   if (!parsed.ok) return { ok: false, error: `JSON 파싱 실패: ${parsed.error}`, raw: parsed.raw };
   return { ok: true, data: parsed.data };
 }
+
+/**
+ * Generate a highly descriptive prompt for Imagen 3.0 based on the user's synopsis input.
+ * Focuses on cinematic, movie-poster-like atmosphere without text.
+ */
+export function generateImagePrompt(userBackground, accumulatedValues) {
+  const vibe = accumulatedValues.vibe || "mysterious and cinematic";
+  const situation = accumulatedValues.situation || "";
+
+  return `A cinematic movie poster style image, ${vibe}. ${situation}. ${userBackground}. 
+Atmospheric lighting, rich textures, high contrast, wide shot or evocative close-up of a key object or environment. 
+NO TEXT, NO LETTERS, NO NUMBERS. 
+Focus on the mood and the world. 
+Style: A blend of Hyper-realistic and artistic, tailored to the story's genre. 
+Masterpiece, highly detailed, 8k resolution, professional photography or high-end concept art.`;
+}
