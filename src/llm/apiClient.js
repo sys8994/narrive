@@ -40,7 +40,7 @@ export function getSettings() {
 /**
  * Save settings to localStorage.
  */
-export function saveSettings({ provider, openaiApiKey, openaiModel, geminiApiKey, geminiModel }) {
+export function saveSettings({ provider, openaiApiKey, openaiModel, geminiApiKey, geminiModel, generateThumbnail }) {
     if (provider !== undefined) localStorage.setItem(LS_KEY_PROV, provider);
     if (openaiApiKey !== undefined) localStorage.setItem(LS_KEY_API_OPENAI, openaiApiKey);
     if (openaiModel !== undefined) localStorage.setItem(LS_KEY_MODEL_OPENAI, openaiModel);
@@ -242,9 +242,9 @@ async function geminiChatCompletion(apiKey, settings, messages, options) {
 
             if (!res.ok) {
                 const errBody = await res.text();
-                // 429 is Rate Limit or Quota Exceeded
-                if (res.status === 429 && attempts < maxAttempts) {
-                    console.warn(`[Gemini Rate Limit] 429 received. Retrying in 4 seconds... (Attempt ${attempts}/${maxAttempts})`);
+                // 429 is Rate Limit or Quota Exceeded, 503 is Service Unavailable
+                if ((res.status === 429 || res.status === 503) && attempts < maxAttempts) {
+                    console.warn(`[Gemini Rate Limit/Overload] ${res.status} received. Retrying in 4 seconds... (Attempt ${attempts}/${maxAttempts})`);
                     await new Promise(r => setTimeout(r, 4000));
                     continue; // Retry
                 }
@@ -293,21 +293,22 @@ export async function geminiImageGeneration(prompt) {
     const apiKey = settings.geminiApiKey;
     if (!apiKey) return { ok: false, error: "API Key (Gemini)가 필요합니다." };
 
-    // Endpoint for Imagen 3.0
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
+    // Endpoint for Gemini 2.5 Flash Image (Nano Banana)
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`;
 
     const body = {
-        instances: [
-            { prompt }
+        contents: [
+            {
+                parts: [{ text: prompt }]
+            }
         ],
-        parameters: {
-            sampleCount: 1,
-            aspectRatio: "1:1",
-            outputMimeType: "image/png"
+        generationConfig: {
+            responseModalities: ["IMAGE"]
         }
     };
 
     console.group('%c[Gemini Image Request]', 'color: #ff7af2; font-weight: bold');
+    console.log('Model: gemini-2.5-flash-image');
     console.log('Prompt:', prompt);
     console.groupEnd();
 
@@ -330,10 +331,12 @@ export async function geminiImageGeneration(prompt) {
         }
 
         const data = await res.json();
-        // Imagen response structure: predictions[0].bytesBase64Encoded
-        const base64 = data.predictions?.[0]?.bytesBase64Encoded;
+        // Gemini generateContent response structure for images:
+        // candidates[0].content.parts[0].inlineData.data (base64)
+        const base64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
 
         if (!base64) {
+            console.error('[Gemini Image Error] No image data in response:', data);
             return { ok: false, error: "이미지 데이터가 응답에 포함되지 않았습니다." };
         }
 

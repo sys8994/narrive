@@ -256,23 +256,7 @@ export function renderSetupWizard({ container, onComplete, onCancel }) {
     const rawLength = accumulatedValues.storyLength || '중편';
     const storyLength = rawLength.split(' ')[0]; // Extract "단편", "중편", "장편"
 
-    const settings = (await import('../../llm/apiClient.js')).getSettings();
-    const imageGenEnabled = settings.generateThumbnail;
-
-    let synopsisPromise = callPrompt2(userBackground, accumulatedValues, storyLength);
-    let imagePromise = null;
-
-    if (imageGenEnabled) {
-      const { generateImagePrompt } = await import('../../llm/prompts.js');
-      const { geminiImageGeneration } = await import('../../llm/apiClient.js');
-      const imagePrompt = generateImagePrompt(userBackground, accumulatedValues);
-      imagePromise = geminiImageGeneration(imagePrompt);
-    }
-
-    const [synopsisResult, imageResult] = await Promise.all([
-      synopsisPromise,
-      imagePromise || Promise.resolve({ ok: true, base64: null })
-    ]);
+    const synopsisResult = await callPrompt2(userBackground, accumulatedValues, storyLength);
 
     if (!synopsisResult.ok) {
       loadingManager.stopLoading("운명의 실을 잇는 데 실패했습니다.");
@@ -281,7 +265,21 @@ export function renderSetupWizard({ container, onComplete, onCancel }) {
     }
 
     const data = synopsisResult.data;
-    const thumbnailBase64 = imageResult?.ok ? imageResult.base64 : null;
+    let thumbnailBase64 = null;
+
+    const settings = (await import('../../llm/apiClient.js')).getSettings();
+    if (settings.generateThumbnail) {
+      const { generateImagePrompt } = await import('../../llm/prompts.js');
+      const { geminiImageGeneration } = await import('../../llm/apiClient.js');
+
+      // Pass the newly generated story context to the image prompt for better style matching
+      const imagePrompt = generateImagePrompt(userBackground, accumulatedValues, data.publicWorld, data.openingText);
+      const imageResult = await geminiImageGeneration(imagePrompt);
+
+      if (imageResult.ok) {
+        thumbnailBase64 = imageResult.base64;
+      }
+    }
 
     loadingManager.stopLoading("당신만의 이야기가 완성되었습니다.");
     onComplete({

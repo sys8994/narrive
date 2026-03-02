@@ -572,17 +572,25 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
 }
 
 /**
- * Generate a highly descriptive prompt for Imagen 3.0 based on the user's synopsis input.
- * Focuses on cinematic, movie-poster-like atmosphere without text.
+ * Generate a highly descriptive prompt for Gemini Flash Image based on the user's synopsis input.
+ * Principles:
+ * 1. Calm movie poster vibe
+ * 2. Focus on location/atmosphere/objects rather than direct character depictions (unless strictly necessary)
+ * 3. NO TEXT OR LETTERS
+ * 4. Adapt art style based on the genre (realistic, cartoonish, dreamy, mysterious, geometric, etc.)
  */
-export function generateImagePrompt(userBackground, accumulatedValues) {
-  const vibe = accumulatedValues.vibe || "mysterious and cinematic";
+export function generateImagePrompt(userBackground, accumulatedValues, publicWorld, openingText) {
+  const vibe = accumulatedValues.vibe || "mysterious";
   const situation = accumulatedValues.situation || "";
+  const worldDesc = publicWorld || "";
+  const openingDesc = openingText || "";
 
-  return `A cinematic movie poster style image, ${vibe}. ${situation}. ${userBackground}. 
-Atmospheric lighting, rich textures, high contrast, wide shot or evocative close-up of a key object or environment. 
-NO TEXT, NO LETTERS, NO NUMBERS. 
-Focus on the mood and the world. 
-Style: A blend of Hyper-realistic and artistic, tailored to the story's genre. 
-Masterpiece, highly detailed, 8k resolution, professional photography or high-end concept art.`;
+  return `Create a cinematic, calm movie poster style image.
+Context: ${vibe}, ${situation}, ${userBackground}.
+Atmosphere Details: ${worldDesc}. ${openingDesc}.
+Focus strongly on the atmosphere, the environment, location, or key symbolic objects.
+Do NOT show characters directly or prominently unless strictly necessary for the context. Instead, emphasize the mood and setting.
+Art Style: Choose the most appropriate art style based on the context (e.g., hyper-realistic photography, stylized cartoon, dreamy surrealism, dark mysterious digital art, geometric abstract, etc.).
+NO TEXT, NO LETTERS, NO NUMBERS, NO TYPOGRAPHY AT ALL in the image.
+Masterpiece, highly detailed, evocative lighting, strong composition.`;
 }

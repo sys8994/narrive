@@ -214,7 +214,7 @@ function handleNewGame() {
     renderTreeNav({ container: els.treeContent, session: null, onNodeClick: () => { } });
 }
 
-async function handleSetupComplete({ title, publicWorld, hiddenPlot, openingText, entryLabel, initialThemeColor, climaxThemeColor, accentColor, worldSchema, storyLength }) {
+async function handleSetupComplete({ title, publicWorld, hiddenPlot, openingText, entryLabel, initialThemeColor, climaxThemeColor, accentColor, worldSchema, storyLength, thumbnailBase64 }) {
     const settings = getSettings();
 
     // Create session
@@ -231,6 +231,7 @@ async function handleSetupComplete({ title, publicWorld, hiddenPlot, openingText
         temperature: settings.temperature,
         worldSchema,
         storyLength,
+        thumbnailBase64,
     });
 
 

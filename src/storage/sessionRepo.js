@@ -51,6 +51,7 @@ export async function saveSession(blob) {
         title: blob.title,
         createdAt: blob.createdAt,
         updatedAt: blob.updatedAt,
+        thumbnailBase64: blob.thumbnailBase64 || null,
     };
     await kv.put(INDEX_KEY, index);
     await kv.put(`session:${blob.id}`, blob);
