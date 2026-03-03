@@ -21,7 +21,7 @@ export function createLayout({ onTitleClick } = {}) {
 
       <div class="app-header__actions">
         <button class="icon-btn" id="btn-toggle-json" title="JSON 데이터 보기" aria-label="JSON 데이터 보기"><i class="fa-solid fa-file-code"></i></button>
-        <button class="icon-btn" id="btn-toggle-right" title="스토리 트리 접기/펼치기" aria-label="스토리 트리 접기/펼치기"><i class="fa-solid fa-code-fork"></i></button>
+        <button class="icon-btn" id="btn-toggle-right" style="transform: scaleY(-1) translateY(2px); " title="스토리 트리 접기/펼치기" aria-label="스토리 트리 접기/펼치기"><i class="fa-solid fa-code-fork"></i></button>
         <button class="icon-btn" id="btn-settings" title="설정" aria-label="설정"><i class="fa-solid fa-gear"></i></button>
       </div>
     </header>

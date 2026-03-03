@@ -81,7 +81,7 @@ function renderLinearPath(container, session, startNodeId, activePathSet, onNode
         // Title
         const titleEl = document.createElement('span');
         titleEl.className = 'tree-node__title';
-        titleEl.textContent = node.depth === 0 ? 'Intro' : ((node.meta && node.meta.title) || `Turn ${node.depth}`);
+        titleEl.textContent = node.depth === 0 ? 'Prologue' : ((node.meta && node.meta.title) || `Turn ${node.depth}`);
 
         nodeEl.appendChild(stepNum);
         nodeEl.appendChild(titleEl);

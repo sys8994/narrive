@@ -272,8 +272,8 @@ export function renderSetupWizard({ container, onComplete, onCancel }) {
       const { generateImagePrompt } = await import('../../llm/prompts.js');
       const { geminiImageGeneration } = await import('../../llm/apiClient.js');
 
-      // Pass the newly generated story context to the image prompt for better style matching
-      const imagePrompt = generateImagePrompt(userBackground, accumulatedValues, data.publicWorld, data.openingText);
+      // Pass the newly generated story context and visual direction to the image prompt
+      const imagePrompt = generateImagePrompt(userBackground, accumulatedValues, data.publicWorld, data.openingText, data.thumbnailDirection);
       const imageResult = await geminiImageGeneration(imagePrompt);
 
       if (imageResult.ok) {

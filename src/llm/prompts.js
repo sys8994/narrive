@@ -8,6 +8,41 @@ import { safeParseJSON } from './parse.js';
 import * as treeEngine from '../core/treeEngine.js';
 import { getNarrativePhaseKey } from '../core/narrativeEngine.js';
 
+// ─── Situation Question Pool (15 categories) ─────────────────────────
+
+const SITUATION_POOL = [
+  { id: 'LOCATION', desc: 'Physical Location (현재 당신이 숨어있거나 갇혀있는 구체적인 장소)', example: '현재 당신은 무너진 성벽 뒤에 몸을 숨기고 있습니다. 이곳은 구체적으로 어떤 장소입니까?' },
+  { id: 'ROLE', desc: 'Surface Role/Cover (당신이 타인을 속이기 위해 사용 중인 가짜 신분)', example: '당신은 현재 적진에 잠입한 상태입니다. 당신이 내세우고 있는 가짜 직업이나 신분은 무엇입니까?' },
+  { id: 'DANGER', desc: 'Immediate Visceral Danger (지금 당장 덮쳐오는 위협적인 존재)', example: '당신을 쫓는 그림자가 문턱까지 다가왔습니다. 그 정체는 무엇입니까?' },
+  { id: 'ITEM', desc: 'Crucial Item (당신이 사수해야 하거나 탈취해야 하는 목표 물건)', example: '당신의 품 안에는 목숨보다 소중한 물건이 하나 들어 있습니다. 그것은 무엇입니까?' },
+  { id: 'CONDITION', desc: 'Physical/Mental Condition (현재 주인공의 건강이나 정신 상태의 결함)', example: '당신은 부상을 입었거나 극심한 피로에 시달리고 있습니다. 현재 당신의 몸 상태는 어떠합니까?' },
+  { id: 'WEATHER', desc: 'Weather/Time (현재 시점의 기상 상황이나 시간대)', example: '창밖으로 보이는 바깥세상의 풍경은 어떤 날씨와 시간대입니까?' },
+  { id: 'ACCIDENT', desc: 'Recent Minor Accident (방금 전 계획을 꼬이게 만든 사소한 돌발 사고)', example: '몇 분 전, 당신의 완벽한 계획을 망칠 뻔한 예기치 못한 실수는 무엇이었습니까?' },
+  { id: 'COMPANION', desc: 'Companion/NPC (지금 함께 있는 조력자나 도망자)', example: '당신과 함께 숨을 죽이고 있는 동행자는 누구입니까?' },
+  { id: 'SOUND', desc: 'Sound/Noise (어둠 속에서 들려오는 신경이 쓰이는 소리)', example: '정적을 깨고 저 멀리서 들려오는 가장 불길한 소리는 무엇입니까?' },
+  { id: 'SCENT', desc: 'Scent/Smell (장소를 지배하는 독특한 냄새나 악취)', example: '이 차가운 공간을 가득 채우고 있는 기이한 냄새는 무엇입니까?' },
+  { id: 'OBSTACLE', desc: 'Visible Obstacle (당신의 앞길을 가로막고 있는 물리적 장애물)', example: '탈출을 위해 반드시 넘어야 하지만, 현재로서는 불가능해 보이는 장애물은 무엇입니까?' },
+  { id: 'GEAR', desc: 'Current Gear/Weapon (당신이 현재 손에 쥐고 있는 장비나 무기)', example: '현재 당신이 유일하게 의지할 수 있는 도구나 무기는 무엇입니까?' },
+  { id: 'REGRET', desc: 'Recent Regret/Thought (방금 전 머릿속을 스친 과거의 그림자나 후회)', example: '이 위기의 순간, 문득 머릿속을 스치고 지나가는 가장 뼈아픈 후회는 무엇입니까?' },
+  { id: 'MESSAGE', desc: 'Cryptic Message (최근에 전달받은 누군가의 메세지나 쪽지)', example: '누군가 당신의 주머니에 몰래 찔러 넣었던 짧은 쪽지에는 어떤 문구가 적혀 있었습니까?' },
+  { id: 'SCAR', desc: 'Physical Scar/Mark (주인공만이 가진 몸의 흉터나 특별한 표식)', example: '당신의 몸 어디에, 어떤 과거를 증명하는 흉터나 표식이 남아 있습니까?' },
+];
+
+function pickSituationCategories(count = 5) {
+  // Always include Location and Role
+  const mandatory = SITUATION_POOL.filter(p => p.id === 'LOCATION' || p.id === 'ROLE');
+  const others = SITUATION_POOL.filter(p => p.id !== 'LOCATION' && p.id !== 'ROLE');
+
+  // Shuffle others
+  for (let i = others.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [others[i], others[j]] = [others[j], others[i]];
+  }
+
+  const selected = [...mandatory, ...others.slice(0, count - 2)];
+  return selected.map(s => `- ${s.desc}: (e.g., "${s.example}")`).join('\n');
+}
+
 // ─── Prompt #1: Background → Follow-up Questions ───────────────────
 
 export async function callPrompt1(userBackground) {
@@ -37,12 +72,12 @@ NEVER force the user to:
 - explain how the crime happened
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 1) EXTRACT & GROUND (MANDATORY)
+STEP 1) EXTRACT THEMES (MANDATORY)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 1. Extract 3–5 key thematic elements from the user's input.
    - These may be emotional (e.g., isolation, decay), structural (e.g., collapsing empire), aesthetic (e.g., neon-lit city), or ideological.
 2. Output them FIRST in "_extractedKeywords".
-3. EVERY question label MUST explicitly reflect at least ONE extracted keyword (in Korean wording) to feel highly personalized. No generic phrasing allowed.
+3. Use these keywords to **inspire** the content of your questions, but DO NOT forcefully inject the exact Korean keyword strings into the question sentences if it makes them sound unnatural or robotic (e.g., "이 [고독]의 세계에서..."). Write natural, flowing Korean sentences.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 2) STRICT CATEGORY SEPARATION
@@ -58,23 +93,16 @@ CATEGORY 1: "vibe" (Exactly 4–5 questions)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Definition: Abstract aesthetics, emotional undertones, narrative grittiness, and the psychological weight of the universe.
 Goal: Establish the literary "flavor" and tensions without writing the plot.
+Tone: Write in clear, concise, and natural Korean. Avoid overly complex metaphors or unnecessarily long sentences.
 
-YOU MUST DRAW INSPIRATION FROM THESE HIGH-QUALITY EXAMPLES (Adapt to user's theme):
-[Sensory Temperature & Mood]
-- "이 세계의 공기에 짙게 깔려 있는, 사람들을 지배하는 가장 주된 정서는 무엇입니까?"
-- "이야기의 전반적인 분위기를 한 폭의 추상화로 표현한다면, 어떤 색채와 온도에 가깝습니까?"
-- "이 세계의 밑바닥에 조용히 흐르고 있는 가장 서늘하거나 쓸쓸한 감각은 어떤 형태입니까?"
-[Tension & Fear]
-- "이 이야기에서 주인공의 숨통을 서서히 조여오는 위협은 주로 어떤 형태를 띠고 있습니까?"
-- "등장인물들이 죽음보다 더 끔찍하게 여기는 '최악의 절망'은 어떤 모습입니까?"
-- "진실에 다가갈수록 주인공이 느끼게 될 주된 심리적 감각은 무엇입니까?"
-[Weight of the Narrative]
-- "이 세계에서 피를 흘리거나 위기에 처했을 때, 이야기는 이를 얼마나 무겁고 현실적으로 묘사합니까?"
-- "폭력이나 물리적인 충돌이 발생할 때, 이야기는 그 순간을 어떤 템포와 시선으로 그려냅니까?"
-- "누군가를 맹목적으로 믿고 등을 맡기는 행위는 이 이야기에서 주로 어떤 결과를 초래합니까?"
-[Treatment of the Unknown & Desire]
-- "인간의 상식을 벗어난 기이한 현상이나 미지의 힘은 이 세계에서 어떤 필터로 다루어집니까?"
-- "이 세계에서 가장 가치 있게 여겨지며, 사람들을 움직이게 만드는 '보이지 않는 욕망'은 무엇입니까?"
+GOOD EXAMPLES (Adapt to user's theme):
+- "이 세계를 지배하는 가장 주된 정서는 무엇입니까?"
+- "이 이야기의 전반적인 색채와 온도는 어떠합니까?"
+- "가장 쓸쓸하거나 무겁게 느껴지는 장소는 어떤 곳입니까?"
+- "주인공의 숨통을 조여오는 위협은 주로 어떤 모습을 띠고 있습니까?"
+- "당신이 가장 두려워하는 '최악의 절망'은 무엇입니까?"
+- "이야기는 폭력이나 죽음을 얼마나 현실적이고 무겁게 다룹니까?"
+- "이 세계에서 가장 가치 있게 여겨지는 '욕망'은 무엇입니까?"
 
 MUST NOT Ask: Trivial visual details (e.g., "벽지 색깔은 무엇인가요?"), socio-economic mechanics, or meta-game settings (difficulty level, UI).
 
@@ -84,19 +112,8 @@ CATEGORY 2: "situation" (Exactly 4–5 questions)
 Definition: Micro-level Turn 1 Inciting Incident.
 The player must be placed in a concrete present-tense dilemma.
 
-You MUST include questions covering:
-1) Exact starting physical location (e.g., "Where exactly are you trapped?")
-2) Immediate visceral danger (e.g., "What is the urgent sound outside the door?")
-3) Protagonist’s surface role or cover identity.
-4) One personal limitation / weakness / penalty.
-
-GOOD EXAMPLES:
-- "당신은 현재 봉쇄된 연구소 1층에 갇혀 있습니다. 문 밖에서 들려오는 위협적인 소리는 무엇입니까?"
-- "이야기가 시작되는 시점, 당신이 가진 가장 치명적인 약점(또는 페널티)은 무엇입니까?"
-
-BAD EXAMPLES:
-- "현재 어떤 문제가 있습니까?" (Too vague)
-- "주변 환경의 제약은 무엇입니까?"
+You MUST generate questions based on these specific categories (Pre-selected for this session):
+${pickSituationCategories(5)}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CRITICAL UX POLICY (STRICT)
@@ -125,13 +142,12 @@ If any rule is violated, regenerate internally before responding.
 QUALITY SELF-CHECK (MANDATORY BEFORE OUTPUT)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Before finalizing, verify:
-1) Did I use the 12 Vibe examples to create deep, thematic questions instead of trivial ones?
-2) Are situation questions concrete and immediate?
+1) Are the Korean question sentences natural, unforced, and easy to read? (No forced keyword insertion like "이 [고독] 속에서...")
+2) Are the situation topics varied? (Did I avoid asking about "weaknesses" again if it wasn't randomly selected?)
 3) Are there ZERO sliders?
 4) Are at least 7 selects present? (DO NOT include "기타" or "상관없음")
 5) Are plot secrets protected?
-6) Is keyword grounding visible in EVERY label?
-7) Did I strictly follow the empty array/string rules for options/placeholder?
+6) Did I strictly follow the empty array/string rules for options/placeholder?
 If not, internally fix before output.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -245,17 +261,31 @@ ${lengthGuidance}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 4. OPENING SCENE (openingText) - MACRO PROLOGUE FOCUS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- Write 2-3 paragraphs of a cinematic PROLOGUE. Each paragraph must be separated by two line breaks.
+- Write 3-4 paragraphs of a cinematic PROLOGUE. 
+- EACH paragraph MUST be separated by EXACTLY TWO line breaks (\n\n).
+- To ensure maximum readability, each paragraph should NOT exceed 2-3 sentences.
 - Focus on the macro-level world-building, the overarching atmosphere, the societal tension, or the history of the world.
 - Make it sound like a movie trailer voiceover setting the grand stage.
 - DO NOT describe the protagonist's immediate physical actions, their exact starting location, or the immediate Turn 1 crisis here. Leave the immediate action for the game engine to start.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-5. NARRATIVE PERSPECTIVE & WRITING STYLE
+5. THUMBNAIL DIRECTION (thumbnailDirection) - CINEMATIC VISION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- Perspective: 2nd person. OMIT the subject "당신은" or "너는". Describe actions directly (e.g., "굳게 닫힌 문을 조심스럽게 밀고 들어간다.").
-- Tense & Tone: Use 반말/평서문 (~한다, ~했다). 
-- DIALOGUE RULE: All spoken dialogue MUST be enclosed in \`<<\` and \`>>\`. (e.g., 남자가 외쳤다. <<거기 멈춰!>>)
+- Design the visual direction for the story's thumbnail image.
+- State the desired camera angle, lens width, lighting style, color grading, and texture (e.g., "Wide angle shot, anamorphic lens, low-key moody lighting, desaturated teal and orange, grainy film texture. Focus on a lone ruined watchtower.").
+- It must evoke a highly professional, non-AI aesthetic (like a real movie poster or analog photography).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. PROMPT-SPECIFIC NARRATIVE RULES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Writing Style: Cinematic, present-tense, immersive, and sensory-driven.
+- Formatting: Use frequent paragraph breaks for readability (like a web novel). 
+  - Each paragraph MUST be separated by EXACTLY TWO line breaks (\\n\\n).
+  - Each paragraph should consist of only 1-3 sentences.
+- Omit the subject "당신은" or "너는" and focus on direct action.
+- Use the 3-part micro-structure for 'knowledgeText' as defined in the schema.
+- NEVER break the fourth wall. No game mechanics talk in the story text. 
+- DIALOGUE RULE: All spoken dialogue MUST be enclosed in `<< ` and ` >> `. (e.g., 남자가 외쳤다. <<거기 멈춰!>>)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FINAL SELF-CHECK (MANDATORY)
@@ -274,10 +304,11 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
   "publicWorld": "string (Markdown bullets)",
   "hiddenPlot": "string (Markdown bullets for PART A and PART B. > 600 characters)",
   "openingText": "string (2-3 paragraphs. Cinematic PROLOGUE setting the macro world vibe. No immediate character actions. Each paragraph separated by two line breaks.)",
+  "thumbnailDirection": "string (Specific camera, lighting, and art direction for the poster. In English.)",
   "initialThemeColor": "string (HEX code)",
   "climaxThemeColor": "string (HEX code)",
   "accentColor": "string (HEX code)",
-  "entryLabel": "string (Korean, 2-3 words, 세계관과 스토리에 따라 달라짐. '모험을 시작합니다', '문이 열립니다', '어둠이 걷힙니다', '건물 안으로 진입합니다' 이런 식으로.)",
+  "entryLabel": "string (Korean, 2-3 words. e.g., '모험을 시작합니다', '문이 열립니다')",
   "worldSchema": {
     "protagonist": { "id": "pc", "name": "string", "role": "string", "limitation": "string", "startingLocationId": "string" },
     "locations": [ { "id": "loc1", "name": "string", "desc": "string", "connectedTo": ["loc2"] } ],
@@ -392,14 +423,14 @@ const PHASE_ACT2 = `
 const PHASE_ACT3 = `
 [PHASE: ACT 3 - 절정 (Climax)]
 - 서사 템포: 서술의 호흡이 가장 짧고 격정적이며, 폭력적이고 숨막히는 긴장감을 유지합니다.
-- 서술 목표: 이야기의 모든 갈등이 한 공간에서 폭발하는 최후의 위기 상황입니다. 돌아갈 길은 없으며, 가장 위협적인 존재와의 직접적이고 최후의 대면을 스펙터클하게 서술하십시오.
+- 서술 목표: 이야기의 모든 갈등이 폭발하는 최후의 위기 상황입니다. (경고: 이전 상황을 요약하거나 회상하지 마십시오. 오직 '지금 눈앞에서 베고 찔리고 부서지는 치열한 현재의 순간'에만 100% 집중하십시오.)
 - 선택지 방향: 목숨을 걸거나 스스로의 일부를 영구히 희생해야만 하는, 극단적이고 치명적인 선택지 2개를 강제하십시오.
 `;
 
 const PHASE_RESOLUTION = `
 [PHASE: RESOLUTION - 결말부 진입 (The Dust Settles)]
 - 톤 앤 매너: 모든 갈등이 방금 종료되었습니다. 승리했다면 안도감이, 패배했다면 돌이킬 수 없는 절망감이 지배합니다.
-- 서술 목표: 클락(Clock) 점수에 따라 이번 사건이 어떻게 일단락되었는지 직후의 상황을 2~3문단으로 묘사하십시오.
+- 서술 목표: 최후의 물리적 충돌이 끝난 '직후의 고요한 현장 상황'을 묘사하십시오. (경고: "수많은 위기를 넘어", "지금까지의 험난한 여정 끝에" 등 여태까지의 사건을 요약하거나 회상하는 감상적인 문장을 절대 쓰지 마십시오. 오직 먼지가 가라앉는 현재의 정적에만 집중하십시오.)
 - 특수 룰 (CRITICAL):
   1. \`statePatch.addFlags\` 배열에 반드시 \`"epilogue_ready"\`를 추가하십시오.
   2. 선택지는 오직 다음 1개만 출력하십시오: [{"id": "opt_epilogue", "text": "에필로그를 확인한다."}]
@@ -409,7 +440,7 @@ const PHASE_RESOLUTION = `
 const PHASE_EPILOGUE = `
 [PHASE: EPILOGUE - 에필로그 (The Aftermath)]
 - 톤 앤 매너: 정적이고 묵직한 여운.
-- 서술 목표: 유저의 이전 선택들과 누적된 결과를 바탕으로, 이 세계와 주인공의 최종적인 운명을 영화의 엔딩 크레딧처럼 3~4문단으로 장엄하게 묘사하십시오.
+- 서술 목표: 이전 결과를 바탕으로 살아남은 세계의 모습이나 남겨진 이들의 후일담을 묘사하십시오. (경고 절대주의: 주인공이 "어떤 길을 걸어왔는지", "어떤 모험을 했는지" 과거의 이력을 총정리하며 나열하지 마십시오. 사건 이후 완전히 뒤바뀐 '현재의 풍경'과 '미래의 여운'만 담백하게 보여주어야 합니다.)
 - 특수 룰 (CRITICAL):
   1. 더 이상의 행동은 불가능합니다. "options" 배열을 반드시 빈 배열([])로 반환하십시오.
   2. 반드시 \`isEnding\`을 true 로 설정하고, \`endingType\`을 명시하여 게임을 완전히 종결하십시오.
@@ -521,7 +552,7 @@ ${dynamicSchemaContext}
 Evaluate the outcome logically. Explain it in \`logicalReasoning\` based on phase/flags/inventory.
 - PATCH-BASED UPDATE: Only output the DELTA in \`statePatch\`. NEVER wipe the inventory or flags array. Preserve unmentioned state implicitly.
 
-- ANTI-ECHO (CRITICAL): NEVER repeat, paraphrase, or summarize previous \`Text\` from [Story History]. Your \`text\` output must ONLY cover the NEW events that occur as a direct result of the \`Player Action\`.
+- ANTI-ECHO (CRITICAL): NEVER repeat, paraphrase, summarize, or reminisce about previous events from [Story History]. Your \`text\` output must ONLY cover the NEW events that occur as a direct result of the \`Player Action\`. Expressions like "지금까지의 긴 여정", "수많은 위기를 극복하고" are strictly forbidden. Start describing the immediate present instantly.
 
 ${dynamicRules}
 
@@ -579,18 +610,24 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
  * 3. NO TEXT OR LETTERS
  * 4. Adapt art style based on the genre (realistic, cartoonish, dreamy, mysterious, geometric, etc.)
  */
-export function generateImagePrompt(userBackground, accumulatedValues, publicWorld, openingText) {
+export function generateImagePrompt(userBackground, accumulatedValues, publicWorld, openingText, thumbnailDirection) {
   const vibe = accumulatedValues.vibe || "mysterious";
   const situation = accumulatedValues.situation || "";
   const worldDesc = publicWorld || "";
   const openingDesc = openingText || "";
+  const direction = thumbnailDirection || "High-end cinematic photography, dramatic lighting, sharp focus.";
 
-  return `Create a cinematic, calm movie poster style image.
+  return `Create a highly professional, cinematic movie poster image. 
 Context: ${vibe}, ${situation}, ${userBackground}.
-Atmosphere Details: ${worldDesc}. ${openingDesc}.
-Focus strongly on the atmosphere, the environment, location, or key symbolic objects.
-Do NOT show characters directly or prominently unless strictly necessary for the context. Instead, emphasize the mood and setting.
-Art Style: Choose the most appropriate art style based on the context (e.g., hyper-realistic photography, stylized cartoon, dreamy surrealism, dark mysterious digital art, geometric abstract, etc.).
-NO TEXT, NO LETTERS, NO NUMBERS, NO TYPOGRAPHY AT ALL in the image.
-Masterpiece, highly detailed, evocative lighting, strong composition.`;
+Atmosphere: ${worldDesc}. ${openingDesc}.
+
+[STRICT CINEMATIC DIRECTION]
+${direction}
+
+[CORE PRINCIPLES]
+- AVOID the generic "AI generated" look. Use realistic textures, subtle film grain, or authentic illustrative styles (e.g. vintage poster, analog photograph, concept art).
+- Focus strongly on the environment, location, or symbolic objects.
+- Do NOT show characters prominently unless absolutely necessary.
+- NO TEXT, NO LETTERS, NO NUMBERS, NO TYPOGRAPHY AT ALL.
+- Masterpiece, highly detailed, evocative composition.`;
 }

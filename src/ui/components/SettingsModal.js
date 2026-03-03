@@ -109,6 +109,8 @@ export function openSettingsModal(modalRoot, onClose) {
   // Save
   overlay.querySelector('#settings-save').addEventListener('click', () => {
     const provider = providerSelect.value;
+    const geminiApiKey = geminiInput.value.trim();
+    const geminiModel = geminiModelSelect.value;
     const openaiApiKey = openaiInput.value.trim();
     const openaiModel = openaiModelSelect.value;
     const generateThumbnail = overlay.querySelector('#settings-gen-thumbnail').checked;
