@@ -285,7 +285,7 @@ ${lengthGuidance}
 - Omit the subject "당신은" or "너는" and focus on direct action.
 - Use the 3-part micro-structure for 'knowledgeText' as defined in the schema.
 - NEVER break the fourth wall. No game mechanics talk in the story text. 
-- DIALOGUE RULE: All spoken dialogue MUST be enclosed in `<< ` and ` >> `. (e.g., 남자가 외쳤다. <<거기 멈춰!>>)
+- DIALOGUE RULE: All spoken dialogue MUST be enclosed in \`<<\` and \`>>\`. (e.g., 남자가 외쳤다. <<거기 멈춰!>>)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FINAL SELF-CHECK (MANDATORY)
