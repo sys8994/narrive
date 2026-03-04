@@ -340,8 +340,10 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
 
 function buildStoryContext(session) {
   const path = treeEngine.getPathToRoot(session, session.currentNodeId);
-  if (path.length === 0) return "";
+  if (path.length === 0) return { contextString: "", openingBlacklist: "" };
   let contextString = "## Story History (Chronological)\n";
+  const recentOpeningLines = [];
+
   path.forEach((id, index) => {
     const node = session.nodesById[id];
     const selectedOpt = node.selectedOptionId
@@ -352,8 +354,28 @@ function buildStoryContext(session) {
     // FULL HISTORY INJECTION: 앵무새 현상과 톤 변질을 막기 위해 전체 텍스트를 그대로 주입.
     const allOptions = node.options.map(o => `- ${o.text}`).join('\n');
     contextString += `[Turn ${turnLabel}]\nText: ${node.text}\nOptions Provided:\n${allOptions}\nUser Choice: ${selectedOpt}\n\n`;
+
+    // 최근 턴의 첫 문장(첫 마침표/느낌표/물음표까지)을 추출하여 blacklist용으로 수집
+    if (node.text && index > 0) { // 프롤로그(index 0) 제외
+      const firstSentenceMatch = node.text.match(/^(.{10,80}?[.!?])/);
+      if (firstSentenceMatch) {
+        recentOpeningLines.push(firstSentenceMatch[1].trim());
+      }
+    }
   });
-  return contextString;
+
+  // 최근 5턴의 opening lines만 blacklist로 사용
+  const blacklistLines = recentOpeningLines.slice(-5);
+  let openingBlacklist = "";
+  if (blacklistLines.length > 0) {
+    openingBlacklist = `
+[OPENING LINE BLACKLIST — ABSOLUTE PROHIBITION]
+The following sentences (or any paraphrase of them) have been used to START a turn's text before. You MUST begin your new text with a COMPLETELY DIFFERENT first sentence. These are BANNED opening sentences:
+${blacklistLines.map((s, i) => `${i + 1}. "${s}"`).join('\n')}
+Do NOT echo these. Do NOT reuse the same subject (weather/lighting/smell) if it already appeared in the last 3 turns' first sentences.`;
+  }
+
+  return { contextString, openingBlacklist };
 }
 
 /**
@@ -400,13 +422,6 @@ function buildDynamicSchemaContext(session) {
   return `${locString}\n\n${exitsString}\n\n${itemString}\n\n${inventoryString}\n\n${npcString}`;
 }
 
-const PHASE_ACT1 = `
-[PHASE: ACT 1 - 발단 (Introduction & Exposition)]
-- 서사 템포: 유유하고 상세한 호흡. 긴장감은 아직 수면 아래에 있습니다.
-- 서술 목표: 일상적이거나 평온해 보이지만 묘한 이질감이 느껴지는 분위기를 조성하십시오. 혼자 방치되어 공간만 관찰하게 두지 말고, 누군가와의 만남이나 가벼운 사건의 발생 등 본격적인 이야기의 '시작'을 알리는 동적인 이벤트를 전개하십시오.
-- 선택지 방향: 타인(또는 주요 사물)과 직접적으로 대화하거나 개입하는 등, 사회적 상호작용과 구체적인 행동을 이끌어내는 선택지를 제시하십시오. 단순 정보 수집 목적의 선택지는 지양합니다.
-`;
-
 const PHASE_ACT1_INITIAL = `
 [PHASE: ACT 1 (START) - 첫 번째 전개 (Initial Action)]
 - 상황: 프롤로그(Turn 0)는 이미 끝났습니다. 유저는 이제 게임의 첫 번째 행동을 시작한 상태입니다.
@@ -414,18 +429,25 @@ const PHASE_ACT1_INITIAL = `
 - 금기 사항: 프롤로그의 문장을 복붙하거나, "문명은 멸망했다...", "당신은 눈을 떴다..." 같은 고립된 고독한 분위기로만 몰아가는 것은 치명적인 오류입니다.
 `;
 
+const PHASE_ACT1 = `
+[PHASE: ACT 1 - 발단 (Introduction & Exposition)]
+- 서사 템포: 유유하고 상세한 호흡. 긴장감은 아직 수면 아래에 있습니다.
+- 서술 목표: 일상적이거나 평온해 보이지만 묘한 이질감이 느껴지는 분위기를 조성하십시오. 혼자 방치되어 공간만 관찰하게 두지 말고, 누군가와의 만남이나 가벼운 사건의 발생 등 본격적인 이야기의 '시작'을 알리는 동적인 이벤트를 전개하십시오.
+- 선택지 방향: 타인(또는 주요 사물)과 직접적으로 대화하거나 개입하는 등, 사회적 상호작용과 구체적인 행동을 이끌어내는 선택지를 제시하십시오. 단순 정보 수집 목적의 선택지는 지양합니다.
+`;
+
 const PHASE_ACT2 = `
 [PHASE: ACT 2 - 전개 (Rising Action & Conflict)]
-- 서사 템포: 호흡이 점차 빨라지고, 갈등과 위기가 본격적으로 표면화됩니다.
-- 서술 목표: 유저의 목적 달성을 가로막는 물리적, 사회적 장애물(적대자, 배신자, 돌발적인 사고)을 가차 없이 등장시키십시오. 정적인 추리나 정보 수집이 아니라, 살아 숨쉬는 인물 간의 갈등이나 구체적인 위기 상황 속으로 유저를 던져 넣으십시오.
-- 선택지 방향: 희생이나 위험을 감수하고(Risk) 장애물을 정면 돌파할 것인지, 또 다른 기회비용을 내고 우회할 것인지를 강요하는 갈등형 선택지를 제시하십시오.
+- 서사 템포: 긴장감이 점차 고조되며, 장르(추리, 공포, 드라마 등)에 맞는 심리적 또는 물리적 위기가 본격적으로 표면화됩니다.
+- 서술 목표: 유저의 목적 달성을 방해하는 장애물(적대자, 숨겨진 진실, 돌발적인 사고)을 가차 없이 등장시키십시오. 단, 이야기의 본래 장르와 분위기를 무시한 채 무작정 몬스터와 싸우거나 주먹다짐을 하는 물리적 전투 액션씬으로 획일화되어서는 절대 안 됩니다.
+- 선택지 방향: 위기를 극복하거나 위험을 감수하는 선택지를 제시하되, 물리적인 타격("맞서 싸운다")에만 의존하지 마십시오. 대화, 기지 발휘, 약점 공략, 도주, 은폐 등 장르에 가장 어울리고 영리한 선택지들을 강요하십시오. 이전 턴과 유사한 방식(예: 계속해서 맞서기)을 또 한 번 반복 제시하는 것을 절대 금지합니다.
 `;
 
 const PHASE_ACT3 = `
 [PHASE: ACT 3 - 절정 (Climax)]
-- 서사 템포: 서술의 호흡이 가장 짧고 격정적이며, 폭력적이고 숨막히는 긴장감을 유지합니다.
-- 서술 목표: 이야기의 모든 갈등이 폭발하는 최후의 위기 상황입니다. (경고: 이전 상황을 요약하거나 회상하지 마십시오. 오직 '지금 눈앞에서 베고 찔리고 부서지는 치열한 현재의 순간'에만 100% 집중하십시오.)
-- 선택지 방향: 목숨을 걸거나 스스로의 일부를 영구히 희생해야만 하는, 극단적이고 치명적인 선택지 2개를 강제하십시오.
+- 서사 템포: 서술의 호흡이 가장 짧고 격정적이며, 각 장르에 걸맞은 최고조의 숨막히는 긴장감을 유지합니다.
+- 서술 목표: 이야기의 모든 갈등이 폭발하는 최후의 위기(선택) 상황입니다. (경고: 이전 상황을 절대 요약하거나 회상하지 마십시오. 오직 '현재 눈앞에 닥친 가장 치명적이고 결정적인 이 순간'에만 100% 집중하십시오. 불필요하게 피가 튀는 물리적 폭력 액션씬으로만 한정 짓지 말고 서사적 폭발력을 높이십시오.)
+- 선택지 방향: 목숨을 걸거나 스스로의 일부를 영구히 희생해야만 하는, 극단적이고 치명적인 선택지 2개를 강제하십시오. (이전 액션과 반복되는 단순한 선택지는 금지)
 `;
 
 const PHASE_RESOLUTION = `
@@ -448,7 +470,7 @@ const PHASE_EPILOGUE = `
 `;
 
 export async function callPrompt3(session, selectedOption) {
-  const storyContext = buildStoryContext(session);
+  const { contextString: storyContext, openingBlacklist } = buildStoryContext(session);
   const state = session.gameState;
   const clocks = state.clocks || { win: 0, lose: 0 };
   const maxClock = Math.max(clocks.win, clocks.lose);
@@ -509,9 +531,10 @@ NORMAL PLAY LOGIC: PROGRESS & ANTI-STALLING
 ────────────────────────────────────────
 CHOICE SPECIFICITY & DIVERSITY (CRITICAL)
 ────────────────────────────────────────
-- OPTION QUANTITY: You MUST generate EXACTLY 2 options to save tokens. Only generate 3 if a situation absolutely demands a highly distinct third path. NEVER generate more than 3.
-- FORBIDDEN PASSIVE VERBS: NEVER use "주변을 둘러본다", "조사한다", "단서를 찾는다", "생각해본다". Force direct action or dialogue.
-- DIVERSITY: At least ONE option MUST involve Dialogue or Social/Physical confrontation with another entity if present. Vary approaches (Bribe vs Attack, Persuade vs Sneak).
+- OPTION QUANTITY: You MUST generate EXACTLY 2 options to save tokens. Only generate 3 if a situation absolutely demands a highly distinct third path.
+- FORBIDDEN PASSIVE VERBS: NEVER use passive/stalling verbs like "주변을 둘러본다", "조사한다", "단서를 찾는다", "생각해본다". Force direct action or dialogue.
+- DIVERSITY & PROGRESS: Options MUST NOT simply repeat the same action style from the last turn (e.g., repeating "Fight/Confront" over multiple turns). Every turn MUST introduce a fundamentally NEW tactical or narrative approach.
+- ZERO ACTION-BIAS: Do NOT default to mindless violence or physical fighting ("Attack him", "Confront head-on") unless the genre is explicitly an action game. For horror, mystery, or drama, enforce genre-appropriate choices like Persuade, Intimidate, Hide, Escape, Sabotage, Use Object, or Bribe.
 `;
   }
 
@@ -555,8 +578,11 @@ ${dynamicSchemaContext}
 Evaluate the outcome logically. Explain it in \`logicalReasoning\` based on phase/flags/inventory.
 - PATCH-BASED UPDATE: Only output the DELTA in \`statePatch\`. NEVER wipe the inventory or flags array. Preserve unmentioned state implicitly.
 
-- STRICT ANTI-ECHO: Because you have the full history, there is a massive risk you will repeat past sentences. NEVER repeat what was just written in the last turn. Write ONLY the immediate consequences of the final [User Choice].
-- START-WITH-ACTION: 텍스트의 첫 문장은 예열 없이 **무조건 외부 환경의 즉각적인 변화(폭발음, 냄새, 빛, 통증 등)나 NPC의 직접적인 대사/반응(Dialogue)**으로 거칠게 시작하십시오.
+- STRICT ANTI-ECHO (CRITICAL): You are prone to repeating the previous turn's narrative (The Parrot Effect). YOU MUST NEVER summarize, echo, or paraphrase what just happened in the immediate previous turn. Every single turn MUST contain massive, undeniable timeline progression.
+- DO NOT ECHO THE CHOICE: Do not re-state the [User Choice] in your text. Immediately show the REACTION or CONSEQUENCE of that choice, escalating the situation dramatically.
+- START-WITH-ACTION: 텍스트의 첫 문장은 예열 없이 **무조건 새로운 사건의 돌발, 외부 환경의 즉각적인 변화, 혹은 NPC의 새로운 대사/반응(Dialogue)**으로 거칠게 시작하십시오. 이전 상황을 반복 묘사하면 치명적입니다.
+- ATMOSPHERE ECONOMY (CRITICAL): 날씨, 빗소리, 조명, 냄새 등 배경 분위기 묘사는 이야기 전체를 통틀어 아껴서 사용하십시오. 동일한 배경 요소(예: "차가운 빗줄기")가 이전 3턴 내에 이미 등장했다면, 그것을 다시 첫 문장에 쓰는 것은 치명적인 오류입니다. 배경 묘사 대신 인물의 행동, 감정, 대화, 또는 새로운 사건으로 즉시 전환하십시오.
+${openingBlacklist}
 
 ${dynamicRules}
 
