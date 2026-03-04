@@ -349,12 +349,14 @@ function buildStoryContext(session, maxRecentNodes = 3) {
       ? (node.options.find((o) => o.id === node.selectedOptionId)?.text || '')
       : 'None (Start)';
     const turnLabel = node.depth === 0 ? "Prologue/Background" : node.depth;
+
+    // ANTI-ECHO: 과거 텍스트의 원문(Full Text)을 절대 주입하지 마십시오. 오직 요약(Summary)만 주입하여 LLM이 문체를 복사-붙여넣기 하는 것을 원천 차단합니다.
     if (isRecent) {
-      const allOptions = node.options.map(o => `- ${o.text}`).join('\n');
-      contextString += `[Turn ${turnLabel}] (FULL)\nText: ${node.text}\nOptions Provided:\n${allOptions}\nAction Taken: ${selectedOpt}\n\n`;
+      const summary = node.turnSummary || node.text.substring(0, 100) + "...";
+      contextString += `[Turn ${turnLabel}] (RECENT HISTORY)\nAction Taken: ${selectedOpt}\nResult Summary: ${summary}\n\n`;
     } else {
       const summary = node.turnSummary || node.text.substring(0, 50) + "...";
-      contextString += `[Turn ${turnLabel}] (SUMMARY)\nSummary: ${summary}\nAction Taken: ${selectedOpt}\n\n`;
+      contextString += `[Turn ${turnLabel}] (PAST SUMMARY)\nSummary: ${summary}\nAction Taken: ${selectedOpt}\n\n`;
     }
   });
   return contextString;
@@ -380,23 +382,28 @@ function buildDynamicSchemaContext(session) {
     ? `[VISIBLE EXITS / PATHS]\n` + connectedLocs.map(l => `- ${l.name} (Move to ID: ${l.id})`).join('\n')
     : `[VISIBLE EXITS / PATHS]\n- None apparent.`;
 
-  // 3. Items in Room
+  // 3. Items in Room & Global Items
   const itemsHere = worldSchema.items?.filter(i => i.initialLocationId === currentLocationId && !gameState.inventory.includes(i.name)) || [];
-  const itemsString = itemsHere.length > 0
-    ? `[ITEMS IN THIS ROOM (Can be picked up or examined)]\n` + itemsHere.map(i => `- ${i.name}: ${i.desc}`).join('\n')
-    : `[ITEMS IN THIS ROOM]\n- No visible items.`;
+  let itemString = `[ITEMS IN CURRENT ROOM (Can be picked up)]\n` + (itemsHere.length > 0 ? itemsHere.map(i => `- ${i.name}: ${i.desc}`).join('\n') : `- No visible items.`);
+
+  const allOtherItems = worldSchema.items?.filter(i => i.initialLocationId !== currentLocationId && !gameState.inventory.includes(i.name)) || [];
+  if (allOtherItems.length > 0) {
+    itemString += `\n\n[OTHER GLOBAL ITEMS IN SCHEMA]\n` + allOtherItems.map(i => `- ${i.name} (At: ${i.initialLocationId}): ${i.desc}`).join('\n');
+  }
 
   // 4. Inventory
   const inventoryString = `[INVENTORY/KEY ITEMS HELD]\n- ${gameState.inventory.length > 0 ? gameState.inventory.join(', ') : 'Empty.'}`;
 
-  // 5. Active NPCs (Randomly pick 1)
-  let npcString = "[ACTIVE NPC POTENTIAL]\n- (중요) 설정된 NPC가 없더라도, 현재 상황에 맞는 새로운 인물(행인, 적, 조력자 등)을 세계관에 맞게 즉석에서 창조하여 유저의 서사에 개입시키십시오. 주인공이 혼자 돌아다니며 독백하거나 탐색만 하게 두지 마십시오. 항상 타인 또는 외부 요소와의 활발한 상호작용이 일어나야 합니다.";
+  // 5. Active NPCs (Global Roster - CoT Enforced)
+  let npcString = `[GLOBAL NPC ROSTER (Involve them actively)]\n`;
   if (worldSchema.npcs && worldSchema.npcs.length > 0) {
-    const randomNpc = worldSchema.npcs[Math.floor(Math.random() * worldSchema.npcs.length)];
-    npcString = `[ACTIVE NPC POTENTIAL (Consider involving them)]\n- ${randomNpc.name} (${randomNpc.role}): Public Motive is '${randomNpc.motive}'\n- (중요) 이 NPC 또는 상황에 맞는 새로운 주변 인물들을 서사에 적극 개입시키십시오. 주인공 혼자 탐색이나 독백으로 시간을 보내게 하지 말고 대화와 상호작용을 유도하십시오.`;
+    npcString += worldSchema.npcs.map(npc => `- ${npc.name} (${npc.role}): Public Motive: '${npc.motive}' / Secret: '${npc.secret}'`).join('\n');
+    npcString += `\n- (중요) 위에 나열된 NPC 중 1명 이상을 현재 상황(Current Room)에 기습적으로 등장시키거나 사건에 개입시키십시오. 거리가 멀다면 연락, 단서 발견 등으로 엮으십시오. 주인공이 혼자 서성이게 두지 마십시오.`;
+  } else {
+    npcString += `- (중요) 설정된 NPC가 없더라도, 세계관에 맞는 새로운 인물(조력자/적/행인)을 즉석에서 창조하여 유저 서사에 당장 개입시키십시오. 주인공 혼자 독백하지 않게 하십시오.`;
   }
 
-  return `${locString}\n\n${exitsString}\n\n${itemsString}\n\n${inventoryString}\n\n${npcString}`;
+  return `${locString}\n\n${exitsString}\n\n${itemString}\n\n${inventoryString}\n\n${npcString}`;
 }
 
 const PHASE_ACT1 = `
@@ -545,6 +552,7 @@ ${dynamicSchemaContext}
 
 - Fragmentation of Truth: Never reveal the full [사건의 전말] at once. Reveal fragments ONLY through dynamic events, conflicts, or dialogue, NOT passive clue-finding.
 - Invisible Hand Options: In ACT1/2, ensure at least ONE option subtly pulls the player into a social interaction or conflict related to the Hidden Plot.
+- Director's Cut (CoT): 텍스트를 작성하기 전, 반드시 \`directorNotes\`를 먼저 작성하여 현재 전개가 [Hidden Plot]이나 NPC 설정(worldSchema)과 어떻게 물리적/사회적으로 충돌할지 기획하십시오.
 
 ────────────────────────────────────────
 3. STATE INTEGRITY (PATCH-BASED)
@@ -552,7 +560,9 @@ ${dynamicSchemaContext}
 Evaluate the outcome logically. Explain it in \`logicalReasoning\` based on phase/flags/inventory.
 - PATCH-BASED UPDATE: Only output the DELTA in \`statePatch\`. NEVER wipe the inventory or flags array. Preserve unmentioned state implicitly.
 
-- ANTI-ECHO (CRITICAL): NEVER repeat, paraphrase, summarize, or reminisce about previous events from [Story History]. Your \`text\` output must ONLY cover the NEW events that occur as a direct result of the \`Player Action\`. Expressions like "지금까지의 긴 여정", "수많은 위기를 극복하고" are strictly forbidden. Start describing the immediate present instantly.
+- STRICT ANTI-ECHO (CRITICAL): 과거의 행동을 요약하거나 묘사하지 마십시오. "[Action Taken]을 선택하자", "문을 열고 들어가니", "마침내", "그렇게" 같은 회상형/요약형 과거 접속 구절의 사용을 영구히 금지합니다.
+- START-WITH-ACTION: 텍스트의 첫 문장은 예열 없이 **무조건 외부 환경의 즉각적인 변화(폭발음, 냄새, 빛, 통증 등)나 NPC의 직접적인 대사/반응(Dialogue)**으로 거칠게 시작하십시오.
+- 오직 직후의 맹렬한 '현재'만 묘사하십시오.
 
 ${dynamicRules}
 
@@ -567,8 +577,12 @@ NARRATIVE PERSPECTIVE & WRITING STYLE
 OUTPUT SCHEMA (STRICT JSON ONLY)
 ────────────────────────────────────────
 {
+  "directorNotes": {
+    "plotAlignment": "string (이 턴의 전개가 [사건의 전말]이나 [서사 전개 프레임워크]의 어느 부분과 어떻게 연결되는지 구체적으로 1-2문장 기획)",
+    "schemaInvolvement": "string (GLOBAL NPC ROSTER나 GLOBAL ITEMS 중 어떤 요소를 현재 씬에 기습적으로 끌어들일 것인지 기획. 없으면 'None')"
+  },
   "logicalReasoning": "string (2-3 sentences explaining causality)",
-  "text": "string (Paragraphs of story covering ONLY new events. [TEXT VOLUME] 지시를 반드시 준수할 것. 이전 턴의 내용을 절대 반복/요약하지 말고 직후의 맹렬한 전개만 서술. 주어 생략. Dialogue uses << >>. ${lengthDirective})",
+  "text": "string (Paragraphs covering ONLY the NEW events. 이전 내용을 절대 반복/요약하지 말고 직후의 맹렬한 씬(Scene)만 액션으로 시작할 것. 주어 생략. Dialogue uses << >>. ${lengthDirective})",
   "turnSummary": "string (1-sentence concise Korean summary of this turn)",
   "statePatch": {
     "addFlags": ["string"], "removeFlags": ["string"], "addItems": ["string"], "removeItems": ["string"], "locationChange": "string or null"
@@ -591,14 +605,15 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
     { role: 'system', content: systemPrompt },
     {
       role: 'user',
-      content: `## Player Action\n${playerAction}\n\n## Current Game State\n${JSON.stringify(state)}`
+      content: `## Player Action\n${playerAction}\n\n## Current Game State\n${JSON.stringify(state)
+        } `
     }
   ];
 
   const result = await chatCompletion(messages, { jsonMode: true });
   if (!result.ok) return result;
   const parsed = safeParseJSON(result.content);
-  if (!parsed.ok) return { ok: false, error: `JSON 파싱 실패: ${parsed.error}`, raw: parsed.raw };
+  if (!parsed.ok) return { ok: false, error: `JSON 파싱 실패: ${parsed.error} `, raw: parsed.raw };
   return { ok: true, data: parsed.data };
 }
 
@@ -617,15 +632,15 @@ export function generateImagePrompt(userBackground, accumulatedValues, publicWor
   const openingDesc = openingText || "";
   const direction = thumbnailDirection || "High-end cinematic photography, dramatic lighting, sharp focus.";
 
-  return `Create a highly professional, cinematic movie poster image. 
-Context: ${vibe}, ${situation}, ${userBackground}.
+  return `Create a highly professional, cinematic movie poster image.
+  Context: ${vibe}, ${situation}, ${userBackground}.
 Atmosphere: ${worldDesc}. ${openingDesc}.
 
 [STRICT CINEMATIC DIRECTION]
 ${direction}
 
 [CORE PRINCIPLES]
-- AVOID the generic "AI generated" look. Use realistic textures, subtle film grain, or authentic illustrative styles (e.g. vintage poster, analog photograph, concept art).
+  - AVOID the generic "AI generated" look.Use realistic textures, subtle film grain, or authentic illustrative styles(e.g.vintage poster, analog photograph, concept art).
 - Focus strongly on the environment, location, or symbolic objects.
 - Do NOT show characters prominently unless absolutely necessary.
 - NO TEXT, NO LETTERS, NO NUMBERS, NO TYPOGRAPHY AT ALL.
