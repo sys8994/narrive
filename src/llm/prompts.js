@@ -338,26 +338,20 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
 
 // ─── Prompt #3: Turn Progression (Dynamic Narrative Phases & Schema Injection) ────────
 
-function buildStoryContext(session, maxRecentNodes = 3) {
+function buildStoryContext(session) {
   const path = treeEngine.getPathToRoot(session, session.currentNodeId);
   if (path.length === 0) return "";
   let contextString = "## Story History (Chronological)\n";
   path.forEach((id, index) => {
     const node = session.nodesById[id];
-    const isRecent = index >= path.length - maxRecentNodes;
     const selectedOpt = node.selectedOptionId
       ? (node.options.find((o) => o.id === node.selectedOptionId)?.text || '')
       : 'None (Start)';
     const turnLabel = node.depth === 0 ? "Prologue/Background" : node.depth;
 
-    // ANTI-ECHO: 과거 텍스트의 원문(Full Text)을 절대 주입하지 마십시오. 오직 요약(Summary)만 주입하여 LLM이 문체를 복사-붙여넣기 하는 것을 원천 차단합니다.
-    if (isRecent) {
-      const summary = node.turnSummary || node.text.substring(0, 100) + "...";
-      contextString += `[Turn ${turnLabel}] (RECENT HISTORY)\nAction Taken: ${selectedOpt}\nResult Summary: ${summary}\n\n`;
-    } else {
-      const summary = node.turnSummary || node.text.substring(0, 50) + "...";
-      contextString += `[Turn ${turnLabel}] (PAST SUMMARY)\nSummary: ${summary}\nAction Taken: ${selectedOpt}\n\n`;
-    }
+    // FULL HISTORY INJECTION: 앵무새 현상과 톤 변질을 막기 위해 전체 텍스트를 그대로 주입.
+    const allOptions = node.options.map(o => `- ${o.text}`).join('\n');
+    contextString += `[Turn ${turnLabel}]\nText: ${node.text}\nOptions Provided:\n${allOptions}\nUser Choice: ${selectedOpt}\n\n`;
   });
   return contextString;
 }
@@ -521,8 +515,8 @@ CHOICE SPECIFICITY & DIVERSITY (CRITICAL)
 `;
   }
 
-  const systemPrompt = `You are the Game Master of a structured interactive text RPG.
-You are not merely writing prose. You are running a strict narrative simulation engine.
+  const systemPrompt = `You are a highly creative and adaptive interactive fiction writer and strict Game Master.
+You are tasked with continuing a rich narrative based on the user's entire journey so far.
 
 ────────────────────────────────────────
 0. CURRENT NARRATIVE PHASE (ABSOLUTE PRIORITY)
@@ -538,21 +532,22 @@ Below is the physical reality of the current turn. You MUST follow these conditi
 ${dynamicSchemaContext}
 
 [CONDITIONAL INTERACTION RULES]
-- IF [ITEMS IN THIS ROOM] is NOT empty: You MUST explicitly describe the item in the text. At least ONE option MUST allow the player to interact with or pick up this item.
-- IF [ACTIVE NPC POTENTIAL] is provided: You MUST introduce this NPC into the scene this turn. They must speak or act based on their 'motive'. At least ONE option MUST involve reacting to or conversing with them.
+- IF [ITEMS IN CURRENT ROOM] is NOT empty: You MUST explicitly describe the item in the text. At least ONE option MUST allow the player to interact with or pick up this item.
+- IF [GLOBAL NPC ROSTER] is provided: You MUST introduce one of these NPCs into the scene this turn. They must speak or act. At least ONE option MUST involve reacting to or conversing with them.
 - IF the player attempts to move: They can ONLY move to locations listed in [VISIBLE EXITS]. If you provide a movement option, it must lead to one of these exact exits.
 - IF the player faces a physical obstacle: Review [INVENTORY]. If an item could logically help, subtly hint at it in the text.
 
 ────────────────────────────────────────
-2. CANON CONTINUITY & ENGINE LOGIC
+2. CANON CONTINUITY & CREATIVE WRITING
 ────────────────────────────────────────
 [World Vibe]: ${session.synopsis.publicWorld || 'N/A'}
 [Hidden Plot]: ${session.synopsis.hiddenPlot || 'N/A'}
-[Story History]:\n${storyContext}
 
-- Fragmentation of Truth: Never reveal the full [사건의 전말] at once. Reveal fragments ONLY through dynamic events, conflicts, or dialogue, NOT passive clue-finding.
-- Invisible Hand Options: In ACT1/2, ensure at least ONE option subtly pulls the player into a social interaction or conflict related to the Hidden Plot.
-- Director's Cut (CoT): 텍스트를 작성하기 전, 반드시 \`directorNotes\`를 먼저 작성하여 현재 전개가 [Hidden Plot]이나 NPC 설정(worldSchema)과 어떻게 물리적/사회적으로 충돌할지 기획하십시오.
+- Creative Continuity: You are provided with the ENTIRE [Story History] below. Read it carefully. Your goal is to WRITE THE NEXT CHAPTER logically and creatively. DO NOT summarize, repeat, or say "As you did X". Simply describe what happens NEXT in vivid detail based on the [User Choice] of the latest turn.
+- Tone Consistency: Match the tone, style, and pacing established in the history.
+- Director's Cut (CoT): Before writing the text, use \`directorNotes\` to explicitly plan how this new scene will incorporate the [Hidden Plot] and adapt to the player's ongoing journey.
+
+[Story History (Full Record)]:\n${storyContext}
 
 ────────────────────────────────────────
 3. STATE INTEGRITY (PATCH-BASED)
@@ -560,9 +555,8 @@ ${dynamicSchemaContext}
 Evaluate the outcome logically. Explain it in \`logicalReasoning\` based on phase/flags/inventory.
 - PATCH-BASED UPDATE: Only output the DELTA in \`statePatch\`. NEVER wipe the inventory or flags array. Preserve unmentioned state implicitly.
 
-- STRICT ANTI-ECHO (CRITICAL): 과거의 행동을 요약하거나 묘사하지 마십시오. "[Action Taken]을 선택하자", "문을 열고 들어가니", "마침내", "그렇게" 같은 회상형/요약형 과거 접속 구절의 사용을 영구히 금지합니다.
+- STRICT ANTI-ECHO: Because you have the full history, there is a massive risk you will repeat past sentences. NEVER repeat what was just written in the last turn. Write ONLY the immediate consequences of the final [User Choice].
 - START-WITH-ACTION: 텍스트의 첫 문장은 예열 없이 **무조건 외부 환경의 즉각적인 변화(폭발음, 냄새, 빛, 통증 등)나 NPC의 직접적인 대사/반응(Dialogue)**으로 거칠게 시작하십시오.
-- 오직 직후의 맹렬한 '현재'만 묘사하십시오.
 
 ${dynamicRules}
 
