@@ -53,6 +53,15 @@ export function safeParseJSON(raw) {
 
         try {
             return { ok: true, data: JSON.parse(cleaned) };
+        } catch (_) { }
+
+        // Attempt 6: Heuristic repair for unescaped quotes inside values
+        // This targets "key": "value with "quotes" inside"
+        // We look for " that are NOT preceded by { , : [ AND NOT followed by , : } ]
+        let repaired = cleaned.replace(/([^\s{,:[])"([^\s},:\]])/g, "$1'$2");
+
+        try {
+            return { ok: true, data: JSON.parse(repaired) };
         } catch (e) {
             return { ok: false, raw, error: e.message };
         }

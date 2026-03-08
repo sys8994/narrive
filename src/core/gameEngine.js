@@ -26,13 +26,13 @@ const inFlightPrefetches = new Map();
 export function createInitialState() {
     return {
         location: '',
-        inventory: [],
         flags: {},
         eventLedger: [],
         clocks: {
-            win: 0,
-            lose: 0
+            tension: 0,
+            insight: 0
         },
+        npcStates: {}, // { npcId: { location: string, status: string } }
         tensionLevel: 1,
         turnCount: 0,
         isEnding: false,
@@ -102,7 +102,7 @@ export function createSession({ title, publicWorld, hiddenPlot, openingText, ent
  * @returns {Promise<Object>} the LLM response data
  */
 export async function generateInitialOptions(session) {
-    const result = await callPrompt3(session, null);
+    const result = await callPrompt3(session, null, session.rootNodeId);
     if (!result.ok) return result;
 
     const data = result.data;
@@ -176,7 +176,7 @@ export async function prefetchOption(session, nodeId, optionId) {
 
     const attemptPrefetch = async () => {
         try {
-            const result = await callPrompt3(session, opt);
+            const result = await callPrompt3(session, opt, nodeId);
             if (!result.ok) return;
 
             const data = result.data;
@@ -276,7 +276,7 @@ export async function progressTurn(session, optionId, customText) {
     } else {
         selectedOption = currentNode.options.find((o) => o.id === optionId);
     }
-    const result = await callPrompt3(session, selectedOption);
+    const result = await callPrompt3(session, selectedOption, session.currentNodeId);
     if (!result.ok) return result;
 
     const data = result.data;
@@ -366,7 +366,7 @@ export async function prefetchAllOptions(session) {
 
         const attemptPrefetch = async () => {
             try {
-                const result = await callPrompt3(session, opt);
+                const result = await callPrompt3(session, opt, nodeId);
                 if (!result.ok) {
                     console.warn(`[Prefetch] Failed for option "${opt.text}":`, result.error);
                     return;
@@ -428,20 +428,19 @@ export async function prefetchAllOptions(session) {
  */
 export function applyStatePatch(prevState, responseData, storyLength = '중편') {
     const patch = responseData.statePatch || {};
-    const clocks = responseData.clockDelta || { track_win: 0, track_lose: 0 };
+    const clocks = responseData.clockDelta || { tension_delta: 0, insight_delta: 0 };
 
     // Shallow copy initial structure
     const newState = {
         ...prevState,
-        inventory: [...prevState.inventory],
         flags: { ...prevState.flags },
         eventLedger: [...prevState.eventLedger],
         clocks: { ...prevState.clocks }
     };
 
     // 1. Clocks 업데이트
-    newState.clocks.win = (newState.clocks.win || 0) + (clocks.track_win || 0);
-    newState.clocks.lose = (newState.clocks.lose || 0) + (clocks.track_lose || 0);
+    newState.clocks.tension = Math.max(0, (newState.clocks.tension || 0) + (clocks.tension_delta || 0));
+    newState.clocks.insight = (newState.clocks.insight || 0) + (clocks.insight_delta || 0);
 
     // 2. Flags 패치
     if (patch.addFlags) {
@@ -455,24 +454,22 @@ export function applyStatePatch(prevState, responseData, storyLength = '중편')
         });
     }
 
-    // 3. Inventory 패치
-    if (patch.addItems) {
-        patch.addItems.forEach(item => {
-            if (item && !newState.inventory.includes(item)) {
-                newState.inventory.push(item);
-            }
-        });
-    }
-    if (patch.removeItems) {
-        newState.inventory = newState.inventory.filter(item => !patch.removeItems.includes(item));
-    }
+    // 3. Inventory 패치 (삭제됨)
 
     // 4. Location 업데이트
     if (patch.locationChange) {
         newState.location = patch.locationChange;
     }
 
-    // 5. Meta & Turn progression
+    // 5. Dynamic NPC States 패치 (Items 삭제됨)
+    if (patch.npcStates) {
+        newState.npcStates = { ...newState.npcStates };
+        Object.entries(patch.npcStates).forEach(([npcId, s]) => {
+            newState.npcStates[npcId] = { ...(newState.npcStates[npcId] || {}), ...s };
+        });
+    }
+
+    // 6. Meta & Turn progression
     newState.turnCount = (prevState.turnCount || 0) + 1;
     if (responseData.turnSummary) {
         newState.eventLedger.push(responseData.turnSummary);
@@ -482,14 +479,9 @@ export function applyStatePatch(prevState, responseData, storyLength = '중편')
 
     // 6. Hard Ending Enforcement
     const threshold = getHardEndingThreshold(storyLength);
-    if (newState.clocks.win >= threshold) {
+    // insight가 임계점에 도달하면 엔딩 국면으로 진입
+    if (newState.clocks.insight >= threshold) {
         newState.isEnding = true;
-        // Optionally mark the type if not already set
-        if (!responseData.endingType) newState.isWinEnding = true;
-    }
-    if (newState.clocks.lose >= threshold) {
-        newState.isEnding = true;
-        if (!responseData.endingType) newState.isLoseEnding = true;
     }
 
     return newState;

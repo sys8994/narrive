@@ -760,14 +760,16 @@ function setOptionLoading(activeBtn, optList) {
  */
 function appendStateBar(container, session) {
   const state = session.gameState;
-  if (state.location || state.inventory.length > 0) {
+  if (state.location || state.turnCount >= 0) {
     const stateBar = document.createElement('div');
     stateBar.className = 'state-bar';
     stateBar.style.cssText = 'margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted);';
     const parts = [];
     if (state.location) parts.push(`📍 ${state.location}`);
-    if (state.inventory.length) parts.push(`🎒 ${state.inventory.join(', ')}`);
     parts.push(`Turn ${state.turnCount}`);
+
+    // tension/insight가 있으면 디버그용으로 살짝 보여줄 수도 있지만, 일단 심플하게 유지합니다.
+
     stateBar.textContent = parts.join('  •  ');
     container.appendChild(stateBar);
   }
