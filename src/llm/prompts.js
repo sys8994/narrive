@@ -280,9 +280,10 @@ PART B: 서사 전개 프레임워크 (The Progression Framework) — 두 구조
 GENERATE distinct, memorable Korean proper nouns for everything. NO generic placeholders.
 ${lengthGuidance}
 - protagonist: MUST include "startingLocationId" which matches exactly one location ID from the locations array.
-- locations (Min 4): Form a logical map. "connectedTo" MUST ONLY contain IDs that actually exist in this array.
-- npcs (Min 3): Each needs a "personality" (detailed persona, speech style, habits), a "motive" (public behavior), and a "secret" (hidden truth tied to the Hidden Plot).
-- winConditions / loseConditions: Replace these with "milestones" (major narrative goals/turning points) that can be triggered when the new Clocks (tension/insight) reach a certain level.
+- locations: Follow the Target Story Length guidance above for count. Form a logical map. "connectedTo" MUST ONLY contain IDs that actually exist in this array.
+- npcs: Follow the Target Story Length guidance above for count. Each needs an "initialLocationId" matching one existing location ID, a "personality" (detailed persona, speech style, habits), a "motive" (public behavior), and a "secret" (hidden truth tied to the Hidden Plot). Spread NPCs across the map; do not place everyone in the starting location.
+- milestones (Min 5): Ordered, concrete narrative checkpoints that keep the story close to the synopsis while still allowing player choice. Each milestone needs "id", "phase" ("ACT1" | "ACT2" | "ACT3" | "RESOLUTION"), "trigger" (tension/insight/turn clue), "goal", "revealOrEscalation", "requiredSchemaRefs" (location/NPC/item IDs), and "completedFlag".
+- winConditions / loseConditions: Keep these as short terminal outcome references only; the ongoing story progression is controlled by "milestones".
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 4. OPENING SCENE (openingText) - MACRO PROLOGUE FOCUS
@@ -324,7 +325,9 @@ Before outputting JSON, silently verify:
 1. Is the "hiddenPlot" split into Truth and Framework, heavily referencing schema IDs?
 2. Does "protagonist.startingLocationId" EXACTLY match a location ID?
 3. Are all IDs in "connectedTo" real locations?
-4. Does the "openingText" act as a MACRO PROLOGUE without explicitly starting the immediate physical action?
+4. Does every NPC "initialLocationId" EXACTLY match a location ID?
+5. Does "worldSchema.milestones" provide an ordered spine from ACT1 through RESOLUTION using real schema IDs?
+6. Does the "openingText" act as a MACRO PROLOGUE without explicitly starting the immediate physical action?
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT SCHEMA (STRICT JSON ONLY)
@@ -349,8 +352,9 @@ You MUST respond with ONLY a JSON object in this exact schema. Do NOT provide mu
   "worldSchema": {
     "protagonist": { "id": "pc", "name": "string", "role": "string", "limitation": "string", "startingLocationId": "string" },
     "locations": [ { "id": "loc1", "name": "string", "desc": "string", "connectedTo": ["loc2"] } ],
-    "npcs": [ { "id": "npc1", "name": "string", "role": "string", "motive": "string", "secret": "string" } ],
+    "npcs": [ { "id": "npc1", "name": "string", "role": "string", "initialLocationId": "loc1", "personality": "string", "motive": "string", "secret": "string" } ],
     "items": [ { "id": "item1", "name": "string", "desc": "string", "initialLocationId": "loc1" } ],
+    "milestones": [ { "id": "ms1", "phase": "ACT1", "trigger": "string", "goal": "string", "revealOrEscalation": "string", "requiredSchemaRefs": ["loc1", "npc1", "item1"], "completedFlag": "string" } ],
     "winConditions": [ { "id": "win1", "desc": "string" } ],
     "loseConditions": [ { "id": "lose1", "desc": "string" } ]
   }
@@ -375,44 +379,98 @@ You MUST respond with ONLY a JSON object in this exact schema. Do NOT provide mu
 
 // ─── Prompt #3: Turn Progression (Dynamic Narrative Phases & Schema Injection) ────────
 
+function getSelectedOptionText(node) {
+  if (!node?.selectedOptionId || !Array.isArray(node.options)) return '';
+  return node.options.find((o) => o.id === node.selectedOptionId)?.text || '';
+}
+
+function getOpeningSentence(text) {
+  if (!text) return '';
+  const compact = text.replace(/\s+/g, ' ').trim();
+  const match = compact.match(/^(.{10,120}?[.!?。！？])/);
+  return (match ? match[1] : compact.slice(0, 120)).trim();
+}
+
 function buildStoryContext(session, targetNodeId) {
   const path = treeEngine.getPathToRoot(session, targetNodeId);
   if (path.length === 0) return { contextString: "", openingBlacklist: "" };
-  let contextString = "## Story History (Chronological)\n";
-  const recentOpeningLines = [];
 
-  path.forEach((id, index) => {
-    const node = session.nodesById[id];
-    const selectedOpt = node.selectedOptionId
-      ? (node.options.find((o) => o.id === node.selectedOptionId)?.text || '')
-      : 'None (Start)';
+  const targetNode = session.nodesById[targetNodeId];
+  const state = targetNode ? (targetNode.stateSnapshot || session.gameState) : session.gameState;
+  const pathNodes = path.map((id) => session.nodesById[id]).filter(Boolean);
+  const summariesFromNodes = pathNodes
+    .filter((node) => node.depth > 0 && node.turnSummary)
+    .map((node) => node.turnSummary);
+  const ledger = (state?.eventLedger?.length ? state.eventLedger : summariesFromNodes).slice(-8);
+  const recentNodes = pathNodes.slice(-4);
+
+  let contextString = "## Canon Ledger (causality only; do not rewrite these beats)\n";
+  contextString += ledger.length
+    ? ledger.map((summary, i) => `${i + 1}. ${summary}`).join('\n')
+    : "- No completed turn summaries yet.";
+
+  contextString += "\n\n## Recent Scenes (immediate continuity only)\n";
+  recentNodes.forEach((node) => {
+    const selectedOpt = getSelectedOptionText(node) || (node.depth === 0 ? 'None (Start)' : 'None yet');
     const turnLabel = node.depth === 0 ? "Prologue/Background" : node.depth;
-
-    // FULL HISTORY INJECTION: 앵무새 현상과 톤 변질을 막기 위해 전체 텍스트를 그대로 주입.
-    const allOptions = node.options.map(o => `- ${o.text}`).join('\n');
-    contextString += `[Turn ${turnLabel}]\nText: ${node.text}\nOptions Provided:\n${allOptions}\nUser Choice: ${selectedOpt}\n\n`;
-
-    // 최근 턴의 첫 문장(첫 마침표/느낌표/물음표까지)을 추출하여 blacklist용으로 수집
-    if (node.text && index > 0) { // 프롤로그(index 0) 제외
-      const firstSentenceMatch = node.text.match(/^(.{10,80}?[.!?])/);
-      if (firstSentenceMatch) {
-        recentOpeningLines.push(firstSentenceMatch[1].trim());
-      }
-    }
+    const allOptions = (node.options || []).map(o => `- ${o.text}`).join('\n') || '- None';
+    contextString += `[Turn ${turnLabel}]\nText: ${node.text || ''}\nOptions Provided:\n${allOptions}\nUser Choice: ${selectedOpt}\n\n`;
   });
 
-  // 최근 5턴의 opening lines만 blacklist로 사용
-  const blacklistLines = recentOpeningLines.slice(-5);
+  const recentOpeningLines = pathNodes
+    .filter((node) => node.depth > 0 && node.text)
+    .map((node) => getOpeningSentence(node.text))
+    .filter(Boolean)
+    .slice(-5);
+
+  const recentChoices = pathNodes
+    .map(getSelectedOptionText)
+    .filter(Boolean)
+    .slice(-6);
+
+  const recentOptions = pathNodes
+    .flatMap((node) => (node.options || []).map((o) => o.text))
+    .filter(Boolean)
+    .slice(-8);
+
+  const bannedActionPatterns = [...new Set([...recentChoices, ...recentOptions])].slice(-8);
   let openingBlacklist = "";
-  if (blacklistLines.length > 0) {
+  if (recentOpeningLines.length > 0 || bannedActionPatterns.length > 0) {
     openingBlacklist = `
-[OPENING LINE BLACKLIST — ABSOLUTE PROHIBITION]
-The following sentences (or any paraphrase of them) have been used to START a turn's text before. You MUST begin your new text with a COMPLETELY DIFFERENT first sentence. These are BANNED opening sentences:
-${blacklistLines.map((s, i) => `${i + 1}. "${s}"`).join('\n')}
-Do NOT echo these. Do NOT reuse the same subject (weather/lighting/smell) if it already appeared in the last 3 turns' first sentences.`;
+[RECENT REPETITION BLACKLIST — ABSOLUTE PROHIBITION]
+Do not reuse, paraphrase, or structurally imitate these recent opening beats:
+${recentOpeningLines.length ? recentOpeningLines.map((s, i) => `${i + 1}. ${s}`).join('\n') : '- None'}
+
+Do not offer the same tactical action pattern again unless the player explicitly insists:
+${bannedActionPatterns.length ? bannedActionPatterns.map((s, i) => `${i + 1}. ${s}`).join('\n') : '- None'}
+Your new turn must create a visible state change: new information, changed NPC status, changed location pressure, spent resource, irreversible cost, or unlocked route.`;
   }
 
   return { contextString, openingBlacklist };
+}
+
+function getWorldSchema(session) {
+  return session.worldSchema || session.synopsis?.worldSchema || {};
+}
+
+function getNpcLocation(npc, gameState) {
+  return gameState.npcStates?.[npc.id]?.location
+    || npc.initialLocationId
+    || npc.startingLocationId
+    || npc.locationId
+    || "Unknown";
+}
+
+function getIncompleteMilestones(worldSchema, gameState) {
+  const milestones = Array.isArray(worldSchema.milestones) ? worldSchema.milestones : [];
+  const flags = gameState.flags || {};
+  return milestones
+    .filter((m) => !m.completedFlag || !flags[m.completedFlag])
+    .sort((a, b) => {
+      const ao = Number(a.order ?? a.index ?? 0);
+      const bo = Number(b.order ?? b.index ?? 0);
+      return ao - bo;
+    });
 }
 
 /**
@@ -421,42 +479,57 @@ Do NOT echo these. Do NOT reuse the same subject (weather/lighting/smell) if it 
 function buildDynamicSchemaContext(session, targetNodeId) {
   const node = session.nodesById[targetNodeId];
   const gameState = node ? (node.stateSnapshot || session.gameState) : session.gameState;
-  const { synopsis } = session;
-  const worldSchema = synopsis.worldSchema || {};
-  const currentLocationId = gameState.location;
+  const worldSchema = getWorldSchema(session);
+  const currentLocationId = gameState.location || worldSchema.protagonist?.startingLocationId || worldSchema.locations?.[0]?.id || '';
 
   // 1. Current Location
   const currentLoc = worldSchema.locations?.find(l => l.id === currentLocationId);
   const locString = currentLoc
     ? `[CURRENT LOCATION: ${currentLoc.name} (ID: ${currentLoc.id})]\n- ${currentLoc.desc}`
-    : `[CURRENT LOCATION: Unknown (ID: ${currentLocationId})]`;
+    : `[CURRENT LOCATION: Unknown (ID: ${currentLocationId || 'not-set'})]\n- If location is unknown, anchor the scene to protagonist.startingLocationId before inventing anything.`;
 
   // 2. Visible Exits
   const connectedLocs = worldSchema.locations?.filter(l => currentLoc?.connectedTo?.includes(l.id)) || [];
   const exitsString = connectedLocs.length > 0
     ? `[VISIBLE EXITS / PATHS]\n` + connectedLocs.map(l => `- ${l.name} (Move to ID: ${l.id})`).join('\n')
-    : `[VISIBLE EXITS / PATHS]\n- None apparent.`;
+    : `[VISIBLE EXITS / PATHS]\n- None apparent. Do not invent a movement destination unless the current action unlocks it.`;
 
   // 3. Flags (Key Narrative Info)
-  const flagsString = `[ACTIVE FLAGS / KNOWLEDGE]\n- ${Object.keys(gameState.flags).length > 0 ? Object.keys(gameState.flags).join(', ') : 'None.'}`;
+  const flagsString = `[ACTIVE FLAGS / KNOWLEDGE]\n- ${Object.keys(gameState.flags || {}).length > 0 ? Object.keys(gameState.flags).join(', ') : 'None.'}`;
 
-  // 4. Active NPCs (Dynamic State Injection)
-  let npcString = `[GLOBAL NPC ROSTER (DYNAMIC STATE)]\n`;
-  if (worldSchema.npcs && worldSchema.npcs.length > 0) {
-    npcString += worldSchema.npcs.map(npc => {
-      const state = gameState.npcStates?.[npc.id] || {};
-      const loc = state.location || "Unknown";
-      const status = state.status || "일반 상태";
-      const isHere = loc === currentLocationId;
+  // 4. Arc Milestones
+  const incompleteMilestones = getIncompleteMilestones(worldSchema, gameState);
+  const nextMilestone = incompleteMilestones[0];
+  const milestoneString = nextMilestone
+    ? `[NEXT ARC MILESTONE — STORY GUARDRAIL]\n- ID: ${nextMilestone.id || 'unknown'} / Phase: ${nextMilestone.phase || 'unspecified'} / Trigger: ${nextMilestone.trigger || 'unspecified'}\n- Goal: ${nextMilestone.goal || ''}\n- Reveal/Escalation: ${nextMilestone.revealOrEscalation || ''}\n- Required Schema Refs: ${(nextMilestone.requiredSchemaRefs || []).join(', ') || 'None'}\n- Completion Flag to add when fulfilled: ${nextMilestone.completedFlag || 'None'}\n- Rule: This turn must either advance this milestone, create a plausible obstacle to it, or mark it completed. Do not skip to a later milestone without a clear cause.`
+    : `[NEXT ARC MILESTONE — STORY GUARDRAIL]\n- None available. Use Hidden Plot PART B as the progression spine and avoid inventing a new central conflict.`;
 
-      return `- ${npc.name} (${npc.role}, ID: ${npc.id}): [위치: ${loc}]${isHere ? " (현재 방에 있음)" : ""} / [성격: ${npc.personality}] / [상태: ${status}] / Motive: '${npc.motive}' / Secret: '${npc.secret}'`;
-    }).join('\n');
-    npcString += `\n- (중요) 위에 나열된 NPC들의 '성격(personality)'과 '말투'를 반드시 유지하며 대화와 행동을 묘사하십시오.`;
-  } else {
-    npcString += `- (중요) 새로운 인물을 창조하여 즉석에서 서사에 개입시키십시오.`;
-  }
+  // 5. NPCs (Dynamic State Injection)
+  const npcs = Array.isArray(worldSchema.npcs) ? worldSchema.npcs : [];
+  const npcRows = npcs.map(npc => {
+    const state = gameState.npcStates?.[npc.id] || {};
+    const loc = getNpcLocation(npc, gameState);
+    const status = state.status || npc.initialStatus || "일반 상태";
+    return { npc, loc, status, isHere: loc === currentLocationId };
+  });
 
-  return `${locString}\n\n${exitsString}\n\n${flagsString}\n\n${npcString}`;
+  const hereRows = npcRows.filter(row => row.isHere);
+  const remoteRows = npcRows.filter(row => !row.isHere).slice(0, 6);
+
+  const npcHereString = `[NPCS IN CURRENT LOCATION]\n` + (hereRows.length > 0
+    ? hereRows.map(({ npc, status }) => `- ${npc.name} (${npc.role}, ID: ${npc.id}) / [성격: ${npc.personality}] / [상태: ${status}] / Motive: '${npc.motive}' / Secret: '${npc.secret}'`).join('\n')
+    : '- None confirmed here. Do not force an NPC into the room unless the player action, current milestone, or visible exit logically brings them in.');
+
+  const rosterString = `[KNOWN NPC ROSTER — OFFSCREEN CONTINUITY]\n` + (remoteRows.length > 0
+    ? remoteRows.map(({ npc, loc, status }) => `- ${npc.name} (${npc.role}, ID: ${npc.id}) / Location: ${loc} / Status: ${status}`).join('\n')
+    : '- No offscreen NPCs.');
+
+  const itemRows = (worldSchema.items || []).filter(item => item.initialLocationId === currentLocationId || item.locationId === currentLocationId);
+  const itemString = `[LOCAL ITEMS / OBJECTS]\n` + (itemRows.length > 0
+    ? itemRows.map(item => `- ${item.name} (ID: ${item.id}): ${item.desc}`).join('\n')
+    : '- None specified.');
+
+  return `${locString}\n\n${exitsString}\n\n${flagsString}\n\n${milestoneString}\n\n${npcHereString}\n\n${rosterString}\n\n${itemString}`;
 }
 
 const PHASE_ACT1_INITIAL = `
@@ -506,7 +579,7 @@ const PHASE_EPILOGUE = `
   2. 반드시 \`isEnding\`을 true 로 설정하고, \`endingType\`을 명시하여 게임을 완전히 종결하십시오.
 `;
 
-export async function callPrompt3(session, selectedOption, targetNodeId = null) {
+export function buildPrompt3Messages(session, selectedOption, targetNodeId = null) {
   const effectiveNodeId = targetNodeId || session.currentNodeId;
   const node = session.nodesById[effectiveNodeId];
   const { contextString: storyContext, openingBlacklist } = buildStoryContext(session, effectiveNodeId);
@@ -566,6 +639,9 @@ NORMAL PLAY LOGIC: PROGRESS & ANTI-STALLING
 - \`tension_delta\`: (+1 or -1) Increases when the situation becomes more urgent, dangerous, or high-stakes. Decreases during moments of reprieve or safety.
 - \`insight_delta\`: (+1) Increases when the player uncovers a piece of the [Hidden Plot] or gains crucial knowledge (Key Info).
 - ANTI-STALLING: If the player stalls, increase \`tension_delta\` by 1 and trigger an external crisis immediately.
+- ARC LOCK: The [NEXT ARC MILESTONE] is the story spine. The scene must visibly advance it, complicate it, or complete it. Do NOT replace the central conflict with a new unrelated mystery, villain, location, or lore system.
+- PLAYER AGENCY WITH GUARDRAILS: If the user choice moves away from the synopsis, honor the immediate action first, then bend consequences back toward the current milestone through a plausible cost, clue, NPC reaction, blocked route, or revealed dependency.
+- NO FAKE PROGRESS: A turn is invalid if it only restates danger, repeats atmosphere, or offers another version of the same investigation/combat/hiding loop without changing flags, NPC state, location pressure, insight, tension, or available routes.
 
 ────────────────────────────────────────
 DYNAMIC WORLD STATE UPDATES (CRITICAL)
@@ -579,6 +655,7 @@ CHOICE SPECIFICITY & DIVERSITY (CRITICAL)
 - OPTION QUANTITY: You MUST generate EXACTLY 2 options to save tokens. Only generate 3 if a situation absolutely demands a highly distinct third path.
 - FORBIDDEN PASSIVE VERBS: NEVER use passive/stalling verbs like "주변을 둘러본다", "조사한다", "단서를 찾는다", "생각해본다". Force direct action or dialogue.
 - DIVERSITY & PROGRESS: Options MUST NOT simply repeat the same action style from the last turn. Every turn MUST introduce a fundamentally NEW tactical or narrative approach.
+- OPTION NOVELTY TEST: Compare against [RECENT REPETITION BLACKLIST]. Each option must differ in verb, target, risk, and expected consequence from the recent options.
 - ZERO ACTION-BIAS: Do NOT default to mindless violence or physical fighting unless the genre is explicitly an action game. For horror, mystery, or drama, enforce genre-appropriate choices like Persuade, Intimidate, Hide, Escape, Sabotage, Use Object, or Bribe.
 `;
   }
@@ -600,9 +677,11 @@ Below is the physical reality of the current turn. You MUST follow these conditi
 ${dynamicSchemaContext}
 
 [CONDITIONAL INTERACTION RULES]
-- IF [GLOBAL NPC ROSTER] is provided: You MUST introduce one of these NPCs into the scene this turn. They must speak or act according to their listed 'personality'. At least ONE option MUST involve reacting to or conversing with them.
+- IF [NPCS IN CURRENT LOCATION] has one or more entries: You may make one of them speak or act, and at least one option should allow a direct response when it is dramatically useful.
+- IF [NPCS IN CURRENT LOCATION] is empty: Do NOT teleport an offscreen NPC into the scene unless the player action, visible exit, or [NEXT ARC MILESTONE] makes their arrival causally necessary.
 - IF the player attempts to move: They can ONLY move to locations listed in [VISIBLE EXITS]. If you provide a movement option, it must lead to one of these exact exits.
 - IF the player uncovers important information: Set a descriptive flag in \`statePatch.addFlags\` to track this 'insight'.
+- IF the [NEXT ARC MILESTONE] is fulfilled this turn: add its exact completion flag to \`statePatch.addFlags\`.
 
 ────────────────────────────────────────
 2. CANON CONTINUITY & CREATIVE WRITING
@@ -610,11 +689,11 @@ ${dynamicSchemaContext}
 [World Vibe]: ${session.synopsis.publicWorld || 'N/A'}
 [Hidden Plot]: ${session.synopsis.hiddenPlot || 'N/A'}
 
-- Creative Continuity: You are provided with the ENTIRE [Story History] below. Read it carefully. Your goal is to WRITE THE NEXT CHAPTER logically and creatively. DO NOT summarize, repeat, or say "As you did X". Simply describe what happens NEXT in vivid detail based on the [User Choice] of the latest turn.
+- Creative Continuity: You are provided with a Canon Ledger plus Recent Scenes below. Use the ledger only for causality and the recent scenes only for immediate continuity. DO NOT summarize, repeat, or say "As you did X". Simply describe what happens NEXT in vivid detail based on the [User Choice] of the latest turn.
 - Tone Consistency: Match the tone, style, and pacing established in the history.
-- Director's Cut (CoT): Before writing the text, use \`directorNotes\` to explicitly plan how this new scene will incorporate the [Hidden Plot] and adapt to the player's ongoing journey.
+- Director's Cut: Before writing the text, use \`directorNotes\` to explicitly state the current milestone, how this turn advances or complicates it, and how the options avoid repeating recent action patterns.
 
-[Story History (Full Record)]:\n${storyContext}
+[Story Context]:\n${storyContext}
 
 ────────────────────────────────────────
 3. STATE INTEGRITY (PATCH-BASED)
@@ -644,7 +723,9 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
 {
   "directorNotes": {
     "plotAlignment": "string (이 턴의 전개가 [사건의 전말]이나 [서사 전개 프레임워크]의 어느 부분과 어떻게 연결되는지 구체적으로 1-2문장 기획)",
-    "schemaInvolvement": "string (GLOBAL NPC ROSTER 중 어떤 인물을 현재 씬에 기습적으로 끌어들일 것인지 기획. 없으면 'None')"
+    "currentMilestone": "string ([NEXT ARC MILESTONE]의 ID와 이번 턴에서 advance/complicate/complete 중 무엇을 할지 명시)",
+    "noveltyCheck": "string ([RECENT REPETITION BLACKLIST]와 비교해 첫 문장과 선택지가 어떻게 새로워지는지 명시)",
+    "schemaInvolvement": "string (현재 위치/NPC/아이템/출구 중 무엇을 사용할지 기획. 없으면 'None')"
   },
   "logicalReasoning": "string (2-3 sentences explaining causality)",
   "text": "string (Paragraphs covering ONLY the NEW events. 이전 내용을 절대 반복/요약하지 말고 직후의 맹렬한 씬(Scene)만 액션으로 시작할 것. 주어 생략. Dialogue uses << >>. ${lengthDirective})",
@@ -676,6 +757,11 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
     }
   ];
 
+  return messages;
+}
+
+export async function callPrompt3(session, selectedOption, targetNodeId = null) {
+  const messages = buildPrompt3Messages(session, selectedOption, targetNodeId);
   const result = await chatCompletion(messages, { jsonMode: true });
   if (!result.ok) return result;
   const parsed = safeParseJSON(result.content);

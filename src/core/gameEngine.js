@@ -23,16 +23,49 @@ const inFlightPrefetches = new Map();
  * Create the initial gameState.
  * @returns {Object}
  */
-export function createInitialState() {
+function getStartingLocationId(worldSchema) {
+    return worldSchema?.protagonist?.startingLocationId || worldSchema?.locations?.[0]?.id || '';
+}
+
+function createInitialNpcStates(worldSchema) {
+    const npcStates = {};
+    if (!Array.isArray(worldSchema?.npcs)) return npcStates;
+
+    worldSchema.npcs.forEach((npc) => {
+        if (!npc?.id) return;
+        const location = npc.initialLocationId || npc.startingLocationId || npc.locationId || '';
+        npcStates[npc.id] = {
+            location,
+            status: npc.initialStatus || '대기 중',
+        };
+    });
+
+    return npcStates;
+}
+
+function cloneState(state) {
     return {
-        location: '',
+        ...state,
+        flags: { ...state.flags },
+        eventLedger: [...state.eventLedger],
+        clocks: { ...state.clocks },
+        npcStates: Object.fromEntries(
+            Object.entries(state.npcStates || {}).map(([id, npcState]) => [id, { ...npcState }])
+        ),
+    };
+}
+
+export function createInitialState(worldSchema = null) {
+    const startingLocationId = getStartingLocationId(worldSchema);
+    return {
+        location: startingLocationId,
         flags: {},
         eventLedger: [],
         clocks: {
             tension: 0,
             insight: 0
         },
-        npcStates: {}, // { npcId: { location: string, status: string } }
+        npcStates: createInitialNpcStates(worldSchema), // { npcId: { location: string, status: string } }
         tensionLevel: 1,
         turnCount: 0,
         isEnding: false,
@@ -57,7 +90,7 @@ export function createSession({ title, publicWorld, hiddenPlot, openingText, ent
     const sessionId = generateId();
     const rootId = generateId();
     const timestamp = now();
-    const initialState = createInitialState();
+    const initialState = createInitialState(worldSchema);
 
     const rootNode = {
         id: rootId,
@@ -66,7 +99,7 @@ export function createSession({ title, publicWorld, hiddenPlot, openingText, ent
         text: openingText,
         options: [],   // will be filled by first LLM call
         selectedOptionId: null,
-        stateSnapshot: { ...initialState },
+        stateSnapshot: cloneState(initialState),
         isEnding: false,
         meta: { title: '시작' },
         visited: true,
@@ -82,7 +115,7 @@ export function createSession({ title, publicWorld, hiddenPlot, openingText, ent
             climaxThemeColor: climaxThemeColor || '#000000',
             accentColor: accentColor || '#ff9e80',
         },
-        synopsis: { publicWorld, hiddenPlot, openingText, entryLabel, storyLength: storyLength || '중편' },
+        synopsis: { publicWorld, hiddenPlot, openingText, entryLabel, storyLength: storyLength || '중편', worldSchema: worldSchema || null },
         worldSchema: worldSchema || null,
 
         llm: { model, temperature },
@@ -90,7 +123,7 @@ export function createSession({ title, publicWorld, hiddenPlot, openingText, ent
         rootNodeId: rootId,
         nodesById: { [rootId]: rootNode },
         edges: [],
-        gameState: { ...initialState },
+        gameState: cloneState(initialState),
         thumbnailBase64: thumbnailBase64 || null,
     };
 }
