@@ -7,6 +7,6 @@ import { init } from './App.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     init().catch((err) => {
-        console.error('[Narrive] Initialization failed:', err);
+        console.error('[Arcweaver] Initialization failed:', err);
     });
 });

@@ -16,7 +16,7 @@ export function createLayout({ onTitleClick } = {}) {
     <header class="app-header" id="app-header">
       <div class="app-header__left">
         <button class="icon-btn" id="btn-toggle-left" title="세션 목록 접기/펼치기" aria-label="세션 목록 접기/펼치기"><i class="fa-solid fa-bars"></i></button>
-        <div class="app-header__title" id="app-title" style="cursor: pointer;">${getBrandIconHtml({ size: 20, className: 'brand-logo--header' })} Narrive</div>
+        <div class="app-header__title" id="app-title" style="cursor: pointer;">${getBrandIconHtml({ size: 20, className: 'brand-logo--header' })} Arcweaver</div>
       </div>
 
       <div class="app-header__actions">

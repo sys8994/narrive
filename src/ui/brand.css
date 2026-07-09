@@ -1,14 +1,8 @@
-/* Narrive Brand Identity Styles */
+/* Arcweaver Brand Identity Styles */
 
 .brand-icon {
-    fill: none;
-    stroke: currentColor;
+    object-fit: contain;
     transition: transform 0.2s ease, opacity 0.2s ease;
-}
-
-.brand-icon__star {
-    fill: var(--accent);
-    filter: drop-shadow(0 0 4px var(--accent));
 }
 
 .brand-logo--header {

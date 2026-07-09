@@ -24,7 +24,7 @@ export function renderHomeView({ container, sessions, lastActiveId, onNewGame, o
             <header class="home-hero">
                 <h1 class="home-hero__title" style="display: flex; align-items: center; justify-content: center; gap: 16px;">
                   ${getBrandIconHtml({ size: 64, className: 'brand-logo--hero' })}
-                  Narrive
+                  Arcweaver
                 </h1>
                 <p class="home-hero__slogan">Your taste. Your world. Your unknown story.</p>
                 

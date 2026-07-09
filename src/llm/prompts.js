@@ -584,8 +584,7 @@ export function buildPrompt3Messages(session, selectedOption, targetNodeId = nul
   const node = session.nodesById[effectiveNodeId];
   const { contextString: storyContext, openingBlacklist } = buildStoryContext(session, effectiveNodeId);
   const state = node ? (node.stateSnapshot || session.gameState) : session.gameState;
-  const clocks = state.clocks || { win: 0, lose: 0 };
-  const maxClock = Math.max(clocks.win, clocks.lose);
+  const clocks = state.clocks || { tension: 0, insight: 0 };
 
   // ─── 분량(Length) 기반 동적 페이즈 판별 로직 ───
   // 세션 정보에서 storyLength를 가져오거나 기본값 사용
@@ -713,7 +712,10 @@ ${dynamicRules}
 NARRATIVE PERSPECTIVE & WRITING STYLE
 ────────────────────────────────────────
 - Perspective: 2nd Person. STRICTLY OMIT the subject "당신은" or "너는". Describe actions directly.
-- Tense & Tone: Use 반말/평서문 (~한다, ~했다). Keep descriptions sensory.
+- Language: Korean narrative prose only, except unavoidable proper nouns or technical IDs inside state/debug fields.
+- Register Lock: The narrator MUST use a consistent literary plain style for every turn. Use endings like "~다", "~한다", "~했다", "~인다", "~이었다".
+- Polite Style Ban: NEVER use polite/formal endings in player-facing output fields: "~습니다", "~습니까", "~합니다", "~하세요", "~해요", "~십시오", "~입니다", "~군요", "~네요". This ban applies to "text", "turnSummary", "options[].text", and "nodeTitle".
+- Dialogue may reflect an NPC's personality, but the narrator outside dialogue must never switch register.
 - DIALOGUE FORMATTING: ALL spoken dialogue MUST be enclosed exactly in \`<<\` and \`>>\`.
 - **STRICT JSON ESCAPING RULE (CRITICAL)**: NEVER use the double quote character (\") inside any string value. Use single quotes (') for all other quoting needs. Unescaped double quotes break the JSON parser.
 
@@ -725,6 +727,7 @@ OUTPUT SCHEMA (STRICT JSON ONLY)
     "plotAlignment": "string (이 턴의 전개가 [사건의 전말]이나 [서사 전개 프레임워크]의 어느 부분과 어떻게 연결되는지 구체적으로 1-2문장 기획)",
     "currentMilestone": "string ([NEXT ARC MILESTONE]의 ID와 이번 턴에서 advance/complicate/complete 중 무엇을 할지 명시)",
     "noveltyCheck": "string ([RECENT REPETITION BLACKLIST]와 비교해 첫 문장과 선택지가 어떻게 새로워지는지 명시)",
+    "narrativeRegister": "string (출력 문체가 일관된 한국어 평서체이며 금지된 존댓말 어미를 쓰지 않았는지 점검)",
     "schemaInvolvement": "string (현재 위치/NPC/아이템/출구 중 무엇을 사용할지 기획. 없으면 'None')"
   },
   "logicalReasoning": "string (2-3 sentences explaining causality)",

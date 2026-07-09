@@ -18,6 +18,45 @@ import { getHardEndingThreshold } from './narrativeEngine.js';
 // Track in-flight prefetch promises to avoid redundant LLM calls
 // Map<"nodeId:optionId", Promise<void>>
 const inFlightPrefetches = new Map();
+const prefetchStatusByKey = new Map();
+
+function getPrefetchKey(nodeId, optionId) {
+    return `${nodeId}:${optionId}`;
+}
+
+function setPrefetchStatus(nodeId, optionId, status, extra = {}) {
+    const key = getPrefetchKey(nodeId, optionId);
+    prefetchStatusByKey.set(key, {
+        ...(prefetchStatusByKey.get(key) || {}),
+        nodeId,
+        optionId,
+        status,
+        updatedAt: now(),
+        ...extra,
+    });
+}
+
+export function getPrefetchSnapshot(session, nodeId = session?.currentNodeId) {
+    const node = session?.nodesById?.[nodeId];
+    if (!node) return [];
+
+    return (node.options || []).map((opt) => {
+        const key = getPrefetchKey(node.id, opt.id);
+        const child = tree.getChild(session, node.id, opt.id);
+        const status = prefetchStatusByKey.get(key) || {};
+
+        return {
+            optionId: opt.id,
+            text: opt.text,
+            status: child ? 'cached' : (status.status || 'idle'),
+            childNodeId: child?.id || null,
+            startedAt: status.startedAt || null,
+            completedAt: status.completedAt || null,
+            durationMs: status.durationMs || null,
+            error: status.error || null,
+        };
+    });
+}
 
 /**
  * Create the initial gameState.
@@ -156,6 +195,7 @@ export async function generateInitialOptions(session) {
         meta: { title: data.nodeTitle || `Turn 1` },
         visited: true,
         turnSummary: data.turnSummary || '',
+        directorNotes: data.directorNotes || null,
     };
 
     if (data.isEnding && data.endingType) {
@@ -202,15 +242,25 @@ export async function prefetchOption(session, nodeId, optionId) {
     const opt = node.options.find(o => o.id === optionId);
     if (!opt) return;
 
-    const prefetchKey = `${nodeId}:${optionId}`;
-    if (inFlightPrefetches.has(prefetchKey)) return;
+    if (tree.getChild(session, nodeId, optionId)) {
+        setPrefetchStatus(nodeId, optionId, 'cached', { completedAt: now(), error: null });
+        return;
+    }
+
+    const prefetchKey = getPrefetchKey(nodeId, optionId);
+    if (inFlightPrefetches.has(prefetchKey)) return inFlightPrefetches.get(prefetchKey);
 
     const parentState = node.stateSnapshot || session.gameState;
+    const startedAt = now();
+    setPrefetchStatus(nodeId, optionId, 'in-flight', { startedAt, completedAt: null, durationMs: null, error: null });
 
     const attemptPrefetch = async () => {
         try {
             const result = await callPrompt3(session, opt, nodeId);
-            if (!result.ok) return;
+            if (!result.ok) {
+                setPrefetchStatus(nodeId, optionId, 'error', { completedAt: now(), durationMs: now() - startedAt, error: result.error || 'LLM prefetch failed' });
+                return;
+            }
 
             const data = result.data;
             const newState = applyStatePatch(parentState, data, session.synopsis?.storyLength);
@@ -228,6 +278,7 @@ export async function prefetchOption(session, nodeId, optionId) {
                 meta: { title: data.nodeTitle || `Turn ${newState.turnCount}` },
                 visited: false,
                 turnSummary: data.turnSummary || '',
+                directorNotes: data.directorNotes || null,
             };
 
             if (data.isEnding && data.endingType) {
@@ -238,6 +289,10 @@ export async function prefetchOption(session, nodeId, optionId) {
                 tree.addNode(session, newNode);
                 tree.addEdge(session, nodeId, opt.id, newNode.id);
             }
+            const child = tree.getChild(session, nodeId, opt.id);
+            setPrefetchStatus(nodeId, optionId, 'cached', { childNodeId: child?.id || newNode.id, completedAt: now(), durationMs: now() - startedAt, error: null });
+        } catch (err) {
+            setPrefetchStatus(nodeId, optionId, 'error', { completedAt: now(), durationMs: now() - startedAt, error: err?.message || String(err) });
         } finally {
             inFlightPrefetches.delete(prefetchKey);
         }
@@ -268,6 +323,7 @@ export async function progressTurn(session, optionId, customText) {
     // 1. Check for existing child
     const existingChild = tree.getChild(session, session.currentNodeId, optionId);
     if (existingChild) {
+        setPrefetchStatus(session.currentNodeId, optionId, 'cached', { childNodeId: existingChild.id, completedAt: now(), error: null });
         session.currentNodeId = existingChild.id;
         session.gameState = { ...existingChild.stateSnapshot };
         session.updatedAt = now();
@@ -284,6 +340,7 @@ export async function progressTurn(session, optionId, customText) {
         // After waiting, the child should now exist in the tree
         const prefetchedChild = tree.getChild(session, session.currentNodeId, optionId);
         if (prefetchedChild) {
+            setPrefetchStatus(session.currentNodeId, optionId, 'cached', { childNodeId: prefetchedChild.id, completedAt: now(), error: null });
             session.currentNodeId = prefetchedChild.id;
             session.gameState = { ...prefetchedChild.stateSnapshot };
             session.updatedAt = now();
@@ -332,6 +389,7 @@ export async function progressTurn(session, optionId, customText) {
         meta: { title: data.nodeTitle || `Turn ${newState.turnCount}` },
         visited: true,
         turnSummary: data.turnSummary || '',
+        directorNotes: data.directorNotes || null,
     };
 
     // If it's an ending, add ending type
@@ -342,6 +400,7 @@ export async function progressTurn(session, optionId, customText) {
     // Update session
     tree.addNode(session, newNode);
     tree.addEdge(session, session.currentNodeId, actualOptionId, newNode.id);
+    setPrefetchStatus(session.currentNodeId, actualOptionId, 'direct', { childNodeId: newNode.id, completedAt: now(), error: null });
     session.currentNodeId = newNode.id;
     session.gameState = { ...newState };
     session.updatedAt = now();
@@ -380,8 +439,12 @@ export async function prefetchAllOptions(session) {
     if (currentNode.isEnding) return;
 
     const optionsToFetch = currentNode.options.filter(opt => {
-        // Skip if already has a child for this option
-        return !tree.getChild(session, currentNode.id, opt.id);
+        const prefetchKey = getPrefetchKey(currentNode.id, opt.id);
+        if (tree.getChild(session, currentNode.id, opt.id)) {
+            setPrefetchStatus(currentNode.id, opt.id, 'cached', { completedAt: now(), error: null });
+            return false;
+        }
+        return !inFlightPrefetches.has(prefetchKey);
     });
 
     if (optionsToFetch.length === 0) return;
@@ -395,13 +458,16 @@ export async function prefetchAllOptions(session) {
     const nodeId = currentNode.id;
 
     const fetchPromises = optionsToFetch.map(async (opt) => {
-        const prefetchKey = `${nodeId}:${opt.id}`;
+        const prefetchKey = getPrefetchKey(nodeId, opt.id);
+        const startedAt = now();
+        setPrefetchStatus(nodeId, opt.id, 'in-flight', { startedAt, completedAt: null, durationMs: null, error: null });
 
         const attemptPrefetch = async () => {
             try {
                 const result = await callPrompt3(session, opt, nodeId);
                 if (!result.ok) {
                     console.warn(`[Prefetch] Failed for option "${opt.text}":`, result.error);
+                    setPrefetchStatus(nodeId, opt.id, 'error', { completedAt: now(), durationMs: now() - startedAt, error: result.error || 'LLM prefetch failed' });
                     return;
                 }
 
@@ -421,6 +487,7 @@ export async function prefetchAllOptions(session) {
                     meta: { title: data.nodeTitle || `Turn ${newState.turnCount}` },
                     visited: false,
                     turnSummary: data.turnSummary || '',
+                    directorNotes: data.directorNotes || null,
                 };
 
                 if (data.isEnding && data.endingType) {
@@ -432,8 +499,11 @@ export async function prefetchAllOptions(session) {
                     tree.addEdge(session, nodeId, opt.id, newNode.id);
                     console.log(`[Prefetch] ✓ Cached "${opt.text}" → node ${newNode.id}`);
                 }
+                const child = tree.getChild(session, nodeId, opt.id);
+                setPrefetchStatus(nodeId, opt.id, 'cached', { childNodeId: child?.id || newNode.id, completedAt: now(), durationMs: now() - startedAt, error: null });
             } catch (err) {
                 console.warn(`[Prefetch] Error for option "${opt.text}":`, err);
+                setPrefetchStatus(nodeId, opt.id, 'error', { completedAt: now(), durationMs: now() - startedAt, error: err?.message || String(err) });
             } finally {
                 inFlightPrefetches.delete(prefetchKey);
             }

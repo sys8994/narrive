@@ -19,7 +19,7 @@ export function renderAuthView(container, onComplete) {
         <div class="auth-view" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; padding:20px; text-align:center;">
             <div class="auth-header" style="margin-bottom: 40px;">
                 ${getBrandIconHtml({ size: 80, className: 'auth-logo' })}
-                <h1 style="font-size: 32px; font-weight: 700; margin-top: 16px; color: var(--text-primary);">Narrive</h1>
+                <h1 style="font-size: 32px; font-weight: 700; margin-top: 16px; color: var(--text-primary);">Arcweaver</h1>
                 <p style="color: var(--text-secondary); opacity: 0.8;">상상하는 모든 이야기가 시작되는 곳</p>
             </div>
 

@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { createSession } from '../src/core/gameEngine.js';
+import { createSession, getPrefetchSnapshot } from '../src/core/gameEngine.js';
 import { buildPrompt3Messages } from '../src/llm/prompts.js';
 
 const checks = [];
@@ -203,10 +203,45 @@ check(
     && systemPrompt.includes('visible state change'),
 );
 check(
+  'Prompt #3 locks Korean plain-style narration and bans polite endings',
+  systemPrompt.includes('Register Lock')
+    && systemPrompt.includes('Polite Style Ban')
+    && systemPrompt.includes('narrativeRegister')
+    && systemPrompt.includes('~습니다'),
+);
+check(
   'user message carries the selected player action and current clocks',
   userPrompt.includes('빛을 끄고 기록실로 몸을 숨긴다')
     && userPrompt.includes('"tension":1')
     && userPrompt.includes('"insight":0'),
+);
+
+const idlePrefetchRows = getPrefetchSnapshot(session, node1.id);
+check(
+  'prefetch debug snapshot reports idle option status before caching',
+  idlePrefetchRows.length === 2 && idlePrefetchRows.every((row) => row.status === 'idle'),
+  JSON.stringify(idlePrefetchRows),
+);
+
+session.nodesById.node2 = {
+  id: 'node2',
+  parentId: node1.id,
+  depth: 2,
+  text: '기록실 문틈에서 같은 호출부호가 더 낮게 새어 나왔다.',
+  options: [],
+  selectedOptionId: null,
+  stateSnapshot: node1.stateSnapshot,
+  visited: false,
+  meta: { title: '기록실 문틈' },
+};
+session.edges.push({ from: node1.id, optionId: 'opt_hide', to: 'node2' });
+
+const cachedPrefetchRows = getPrefetchSnapshot(session, node1.id);
+check(
+  'prefetch debug snapshot reports cached child nodes',
+  cachedPrefetchRows.find((row) => row.optionId === 'opt_hide')?.status === 'cached'
+    && cachedPrefetchRows.find((row) => row.optionId === 'opt_hide')?.childNodeId === 'node2',
+  JSON.stringify(cachedPrefetchRows),
 );
 
 const failed = checks.filter((item) => !item.condition);

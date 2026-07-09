@@ -12,7 +12,7 @@
 import { getPathToRoot } from '../../core/treeEngine.js';
 import { getBrandIconHtml } from './BrandIcon.js';
 import { getNarrativePhaseLabel, getNarrativePhaseKey } from '../../core/narrativeEngine.js';
-import { addCustomOption, prefetchOption } from '../../core/gameEngine.js';
+import { addCustomOption, getPrefetchSnapshot, prefetchOption } from '../../core/gameEngine.js';
 
 // ─── Configurable Timing ─────────────────────────────────────────
 const STREAM_WORD_DELAY_MS = 35;   // delay between each word appearing
@@ -118,14 +118,7 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
     const headerTextContainer = document.createElement('span');
     headerEl.appendChild(headerTextContainer);
 
-    // Debug tooltip content
-    const state = node.stateSnapshot || {};
-    const liveState = session.gameState || {};
-    const clocks = state.clocks || { win: 0, lose: 0 };
-    const liveClocks = liveState.clocks || { win: 0, lose: 0 };
-    const phaseLabel = getNarrativePhaseLabel(node.depth, clocks);
-
-    const stateText = `[Turn ${node.depth}] (${phaseLabel})\n--- NODE STATE ---\nLocation: ${state.location || 'N/A'}\nClocks: Win(${clocks.win}), Lose(${clocks.lose})\n--- LIVE STATE ---\nLocation: ${liveState.location || 'N/A'}\nClocks: Win(${liveClocks.win}), Lose(${liveClocks.lose})\nLogic: ${node.logicalReasoning || 'N/A'}`;
+    const stateText = buildDebugStateText(session, node);
 
     const debugEl = document.createElement('div');
     debugEl.className = 'debug-state-trigger';
@@ -202,7 +195,7 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
 
         // Content
         if (node.isEnding) {
-          await renderEnding(turnEl, node, false);
+          await renderEnding(turnEl, node, false, session);
         } else {
           const textEl = turnEl.querySelector('.story-text');
           await streamText(textEl, node.text, session.worldSchema);
@@ -216,7 +209,7 @@ export function renderStoryView({ container, session, onOptionSelect, skipStream
     } else {
       // Instant render
       if (node.isEnding) {
-        renderEnding(turnEl, node, true);
+        renderEnding(turnEl, node, true, session);
       } else {
         const textEl = turnEl.querySelector('.story-text');
         headerTextContainer.textContent = headerText;
@@ -426,7 +419,7 @@ export function updateThemeVisuals(session, stateSnapshot) {
   const climaxColor = applyColorFilter(session.themeColor.climaxThemeColor || '#000000', 0.8, 0.8);
 
   const snapshot = stateSnapshot || {};
-  const clocks = snapshot.clocks || { win: 0, lose: 0 };
+  const clocks = snapshot.clocks || { tension: 0, insight: 0 };
   const turnCount = snapshot.turnCount || 0;
   const phaseKey = getNarrativePhaseKey(turnCount, clocks);
 
@@ -442,9 +435,9 @@ export function updateThemeVisuals(session, stateSnapshot) {
 
   // Final override for ENDING
   if (phaseKey === 'ENDING') {
-    const isWin = (clocks.win || 0) >= (clocks.lose || 0);
-    // Move slightly back to initial if win, stay climax if lose
-    factor = isWin ? 0.0 : 1.0;
+    const insightLed = (clocks.insight || 0) >= (clocks.tension || 0);
+    // Insight-led endings ease the palette; tension-led endings stay close to climax.
+    factor = insightLed ? 0.35 : 1.0;
   }
 
   const currentColor = interpolateColor(initialColor, climaxColor, factor);
@@ -700,20 +693,157 @@ function openActionModal(onConfirm) {
 /**
  * Open a modal to show debug state information.
  */
+function getSelectedOptionText(node) {
+  if (!node?.selectedOptionId || !Array.isArray(node.options)) return null;
+  return node.options.find((option) => option.id === node.selectedOptionId)?.text || null;
+}
+
+function getCurrentLocation(schema, locationId) {
+  return schema?.locations?.find((location) => location.id === locationId) || null;
+}
+
+function getVisibleExits(schema, location) {
+  if (!schema || !location) return [];
+  return (schema.locations || [])
+    .filter((candidate) => location.connectedTo?.includes(candidate.id))
+    .map((candidate) => ({ id: candidate.id, name: candidate.name }));
+}
+
+function getLocalItems(schema, locationId) {
+  return (schema?.items || [])
+    .filter((item) => item.initialLocationId === locationId || item.locationId === locationId)
+    .map((item) => ({ id: item.id, name: item.name, desc: item.desc }));
+}
+
+function getNpcDebugRows(schema, state, locationId) {
+  return (schema?.npcs || []).map((npc) => {
+    const npcState = state.npcStates?.[npc.id] || {};
+    const location = npcState.location || npc.initialLocationId || npc.startingLocationId || npc.locationId || null;
+    return {
+      id: npc.id,
+      name: npc.name,
+      role: npc.role,
+      location,
+      isHere: location === locationId,
+      status: npcState.status || npc.initialStatus || null,
+      motive: npc.motive || null,
+      secret: npc.secret || null,
+    };
+  });
+}
+
+function getNextMilestone(schema, state) {
+  const flags = state.flags || {};
+  return (schema?.milestones || [])
+    .filter((milestone) => !milestone.completedFlag || !flags[milestone.completedFlag])
+    .sort((a, b) => Number(a.order ?? a.index ?? 0) - Number(b.order ?? b.index ?? 0))[0] || null;
+}
+
+function getCachedChild(session, nodeId, optionId) {
+  const edge = (session.edges || []).find((candidate) => candidate.from === nodeId && candidate.optionId === optionId);
+  return edge ? session.nodesById?.[edge.to] || null : null;
+}
+
+function buildDebugStateText(session, node) {
+  const state = node.stateSnapshot || {};
+  const liveState = session.gameState || {};
+  const schema = session.worldSchema || session.synopsis?.worldSchema || {};
+  const storyLength = session.synopsis?.storyLength || '중편';
+  const clocks = state.clocks || {};
+  const phaseKey = getNarrativePhaseKey(state.turnCount || node.depth || 0, clocks, storyLength);
+  const phaseLabel = getNarrativePhaseLabel(state.turnCount || node.depth || 0, clocks, storyLength);
+  const location = getCurrentLocation(schema, state.location);
+  const npcRows = getNpcDebugRows(schema, state, state.location);
+  const prefetch = getPrefetchSnapshot(session, node.id);
+
+  const snapshot = {
+    session: {
+      title: session.title,
+      storyLength,
+      currentNodeId: session.currentNodeId,
+    },
+    node: {
+      id: node.id,
+      parentId: node.parentId,
+      depth: node.depth,
+      title: node.meta?.title || null,
+      visited: !!node.visited,
+      isCurrent: session.currentNodeId === node.id,
+      isEnding: !!node.isEnding,
+      selectedOptionId: node.selectedOptionId || null,
+      selectedOptionText: getSelectedOptionText(node),
+    },
+    phase: {
+      key: phaseKey,
+      label: phaseLabel,
+      turnCount: state.turnCount || 0,
+      tensionLevel: state.tensionLevel || null,
+      clocks: {
+        tension: clocks.tension || 0,
+        insight: clocks.insight || 0,
+      },
+    },
+    location: location ? {
+      id: location.id,
+      name: location.name,
+      desc: location.desc,
+      visibleExits: getVisibleExits(schema, location),
+    } : {
+      id: state.location || null,
+      name: null,
+      visibleExits: [],
+    },
+    localScene: {
+      items: getLocalItems(schema, state.location),
+      npcsHere: npcRows.filter((npc) => npc.isHere),
+      npcsOffscreen: npcRows.filter((npc) => !npc.isHere),
+    },
+    narrative: {
+      turnSummary: node.turnSummary || null,
+      logicalReasoning: node.logicalReasoning || null,
+      directorNotes: node.directorNotes || null,
+      nextMilestone: getNextMilestone(schema, state),
+      recentLedger: (state.eventLedger || []).slice(-6),
+      flags: Object.keys(state.flags || {}),
+    },
+    options: (node.options || []).map((option) => {
+      const child = getCachedChild(session, node.id, option.id);
+      const prefetchRow = prefetch.find((row) => row.optionId === option.id);
+      return {
+        id: option.id,
+        text: option.text,
+        selected: option.id === node.selectedOptionId,
+        cachedChildNodeId: child?.id || null,
+        cachedChildTitle: child?.meta?.title || null,
+        prefetch: prefetchRow || { status: child ? 'cached' : 'idle' },
+      };
+    }),
+    liveState: {
+      location: liveState.location || null,
+      turnCount: liveState.turnCount || 0,
+      clocks: liveState.clocks || {},
+      flags: Object.keys(liveState.flags || {}),
+    },
+  };
+
+  return JSON.stringify(snapshot, null, 2);
+}
+
 function openDebugModal(content) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
 
   const modal = document.createElement('div');
   modal.className = 'modal';
-  modal.style.width = '500px';
+  modal.style.width = 'min(760px, calc(100vw - 32px))';
 
   modal.innerHTML = `
-    <div class="modal__header">Debug State Information</div>
+    <div class="modal__header">Debug Snapshot</div>
     <div class="modal__body" style="margin-bottom: 20px;">
-      <pre style="background: var(--bg-tertiary); padding: 16px; border-radius: var(--radius-sm); font-size: 12px; white-space: pre-wrap; word-break: break-all; color: var(--text-primary); border: 1px solid var(--border);">${escapeHTML(content)}</pre>
+      <pre style="background: var(--bg-tertiary); padding: 16px; border-radius: var(--radius-sm); font-size: 12px; white-space: pre-wrap; word-break: break-word; color: var(--text-primary); border: 1px solid var(--border); max-height: min(68vh, 720px); overflow: auto;">${escapeHTML(content)}</pre>
     </div>
     <div class="modal__footer">
+      <button class="btn btn-secondary btn-copy">복사</button>
       <button class="btn btn-primary btn-close">닫기</button>
     </div>
   `;
@@ -722,7 +852,14 @@ function openDebugModal(content) {
   document.body.appendChild(overlay);
 
   const closeBtn = modal.querySelector('.btn-close');
+  const copyBtn = modal.querySelector('.btn-copy');
   const close = () => overlay.remove();
+
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard?.writeText(content);
+    copyBtn.textContent = '복사됨';
+    setTimeout(() => { copyBtn.textContent = '복사'; }, 1400);
+  });
 
   closeBtn.addEventListener('click', close);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
@@ -816,7 +953,7 @@ function renderWelcome(container) {
   container.innerHTML = `
     <div class="empty-state">
       <div class="empty-state__icon">${getBrandIconHtml({ size: 64, className: 'brand-logo--hero' })}</div>
-      <div class="empty-state__text" style="font-size: 20px; color: var(--text-primary);">Narrive</div>
+      <div class="empty-state__text" style="font-size: 20px; color: var(--text-primary);">Arcweaver</div>
       <div class="empty-state__hint" style="margin-top: 8px;">왼쪽에서 게임을 불러오거나 새 게임을 시작하세요</div>
     </div>
   `;
@@ -825,7 +962,7 @@ function renderWelcome(container) {
 /**
  * Render the ending screen with optional streaming.
  */
-async function renderEnding(container, node, skipStreaming) {
+async function renderEnding(container, node, skipStreaming, session) {
   const endingType = (node.meta && node.meta.endingType) || 'neutral';
 
   // Map internal types to display labels and CSS classes
@@ -850,10 +987,12 @@ async function renderEnding(container, node, skipStreaming) {
   debugWrap.style.cssText = 'display: flex; justify-content: flex-end; margin-bottom: 8px;';
 
   const debugEl = document.createElement('div');
-  debugEl.className = 'debug-state-trigger tooltip';
-  debugEl.dataset.tooltip = `[Turn ${node.depth}] (ENDING)\nClocks: Win(${node.stateSnapshot?.clocks?.win}), Lose(${node.stateSnapshot?.clocks?.lose})\nLogic: ${node.logicalReasoning}`;
-  debugEl.style.cssText = 'font-size: 10px; opacity: 0.3; cursor: help; border: 1px solid currentColor; padding: 1px 4px; border-radius: 3px;';
+  debugEl.className = 'debug-state-trigger';
+  debugEl.style.cssText = 'font-size: 10px; opacity: 0.3; cursor: pointer; border: 1px solid currentColor; padding: 1px 4px; border-radius: 3px;';
   debugEl.textContent = 'debug';
+  debugEl.addEventListener('click', () => {
+    openDebugModal(buildDebugStateText(session, node));
+  });
   debugWrap.appendChild(debugEl);
   endingDiv.appendChild(debugWrap);
 
